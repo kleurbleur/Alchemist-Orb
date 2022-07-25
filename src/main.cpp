@@ -125,7 +125,29 @@ void setup()
 void loop()
 {
 
-    if (sw.elapsed() >= 30) {
+    // ACE/MQTT Stuff
+    // if (Serial.available()) {
+    //     String incomingMqttMessage = Serial.readStringUntil('\n');
+    //     // The parser accepts a char * (c string)
+    //     char msgBuf[1024];
+    //     strcpy(msgBuf, incomingMqttMessage.c_str());
+    //     Sherlocked.parse(msgBuf);
+    // }
+    // /* Keep server up to date about input and output changes*/
+    // static uint32_t lastSend = 0;
+    // if(millis() - lastSend > 30000)
+    // {
+    //     lastSend = millis();
+    //     int inputId = 1;
+    //     int inputValue = random(0, 255);
+    //     pubMsg(Sherlocked.sendInput(inputId, inputValue, T_INPUT));
+    // }
+
+
+
+
+
+    if (sw.elapsed() >= inbetween_time) {
         int white_1_i = white_1_ramp.update();
         Serial.print("white_1_i: ");
         Serial.println(white_1_i);
@@ -133,7 +155,7 @@ void loop()
         strip.Show();
     }
 
-    if (sw.elapsed() >= 60) {
+    if (sw.elapsed() >= (inbetween_time * 2)) {
         int white_2_i = white_2_ramp.update();
         Serial.print("white_2_i: ");
         Serial.println(white_2_i);
@@ -141,7 +163,7 @@ void loop()
         strip.Show();
     }
 
-    if (sw.elapsed() >= 90) {
+    if (sw.elapsed() >= (inbetween_time * 3)) {
         int white_3_i = white_3_ramp.update();
         Serial.print("white_3_i: ");
         Serial.println(white_3_i);
