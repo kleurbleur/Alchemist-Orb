@@ -8,9 +8,10 @@ const char* ssid = "Wireless Funtime Palace";
 const char* password = "radiorijnmond";
 char hostname[] ="Orb";
 char startMessage[] = "Orb is online";
-char sub_topic[] = "Centrepiece_in";  // out en in topics are best to seperate
-char pub_topic[] = "Centrepiece_out"; // out en in topics are best to seperate
-IPAddress server(192, 168, 178, 215);
+char gen_topic[] = "alch";  // out en in topics are best to seperate
+char puz_topic[] = "alch/centrepiece"; // out en in topics are best to seperate
+char mod_topic[] = "alch/centrepiece/controller"; // out en in topics are best to seperate
+IPAddress server(192, 168, 178, 214);
 
 
 
@@ -40,11 +41,11 @@ void callback(char* sub_topic, byte* payload, unsigned int length) {
 // INCOMING TEST MESSAGES
   if(msg.indexOf("start") >= 0){
     Serial.println("found start");
-    client.publish(pub_topic,"running");
+    client.publish(puz_topic,"running"); // infinite loop when not checking for sender (or self). 
   } 
   if(msg.indexOf("shutdown") >= 0){
     Serial.println("found shutdown");
-    client.publish(pub_topic,"halting");
+    client.publish(puz_topic,"halting");
   } 
 }
 
@@ -56,9 +57,12 @@ void reconnect() {
     if (client.connect(hostname)) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish(sub_topic, startMessage);
+      client.publish(puz_topic, startMessage);
       // ... and resubscribe
-      client.subscribe(sub_topic);
+      client.subscribe(gen_topic);
+      client.subscribe(puz_topic);
+      client.subscribe(mod_topic);
+
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -72,7 +76,7 @@ void reconnect() {
 
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   digitalWrite(18, LOW);
   initWiFi();
 

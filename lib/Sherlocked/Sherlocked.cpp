@@ -74,7 +74,10 @@ char * SherlockedClass::sendState(int state, int trig)
   JsonObject& root = jsonBuffer.createObject();
   root["sender"] = getName();
   root["connected"] = true;
-	root["state"] = getStateStr(state);
+  if(state != UNDEFINED)
+  {
+  	root["state"] = getStateStr(state);	
+  }
   root["method"] 	= getMethodStr(M_INFO);
   root["trigger"] = getTriggerStr(trig);
   root.printTo(_pubBuf, sizeof(_pubBuf));
@@ -154,6 +157,7 @@ bool SherlockedClass::parse(char * incomingMessage)
 		if (root.containsKey("sender"))
 		{
 		  const char* s = root["sender"];
+		  Serial.println(s);
 		  if (strcmp(s, this->_name) == 0) // We sent this message, dont parse!
 		  {
 			return false;
@@ -234,7 +238,12 @@ bool SherlockedClass::parse(char * incomingMessage)
 				  }
 				  if(inputCallback)
 				  {
-						inputCallback(meth, numInputs, ids, vals, getTriggerID(sender));
+				  	int trig = getTriggerID(sender);
+				  	if (trig == UNDEFINED && root.containsKey("trigger"))
+				  	{
+							trig = getTriggerID(root["trigger"]);
+				  	}
+						inputCallback(meth, numInputs, ids, vals, trig);
 				  	handled = true;
 				  }
 				}
@@ -264,7 +273,12 @@ bool SherlockedClass::parse(char * incomingMessage)
 				  }
 				  if(outputCallback)
 				  {
-						outputCallback(meth, numOutputs, ids, vals, getTriggerID(sender));
+				  	int trig = getTriggerID(sender);
+				  	if (trig == UNDEFINED && root.containsKey("trigger"))
+				  	{
+							trig = getTriggerID(root["trigger"]);
+				  	}
+						outputCallback(meth, numOutputs, ids, vals, trig);
 				  	handled = true;
 				  }
 				}
@@ -285,7 +299,12 @@ bool SherlockedClass::parse(char * incomingMessage)
 					}
 					if(commandCallback)
 					{
-						commandCallback(meth, cid, val, getTriggerID(sender));
+						int trig = getTriggerID(sender);
+				  	if (trig == UNDEFINED && root.containsKey("trigger"))
+				  	{
+							trig = getTriggerID(root["trigger"]);
+				  	}
+						commandCallback(meth, cid, val, trig);
 						handled = true;
 					}
 				}
@@ -308,7 +327,12 @@ bool SherlockedClass::parse(char * incomingMessage)
 					}
 					if(outputCallback)
 					{
-						outputCallback(meth, numOutputs, ids, vals, getTriggerID(sender));	
+						int trig = getTriggerID(sender);
+				  	if (trig == UNDEFINED && root.containsKey("trigger"))
+				  	{
+							trig = getTriggerID(root["trigger"]);
+				  	}
+						outputCallback(meth, numOutputs, ids, vals, trig);	
 						handled = true;
 					}
 				}
@@ -329,7 +353,12 @@ bool SherlockedClass::parse(char * incomingMessage)
 					}
 					if(inputCallback)
 					{
-						inputCallback(meth, numInputs, ids, vals, getTriggerID(sender));
+						int trig = getTriggerID(sender);
+				  	if (trig == UNDEFINED && root.containsKey("trigger"))
+				  	{
+							trig = getTriggerID(root["trigger"]);
+				  	}
+						inputCallback(meth, numInputs, ids, vals, trig);
 						handled = true;
 					}
 				}
@@ -357,13 +386,18 @@ bool SherlockedClass::parse(char * incomingMessage)
 					char val[64];
 					strcpy(val, "");
 					if (root.containsKey("file"))
-				  {
+				  	{
 						const char* file = root["file"];
 						strcpy(val, file);
 					}
 					if(commandCallback)
 					{
-						commandCallback(meth, cid, val, getTriggerID(sender));
+						int trig = getTriggerID(sender);
+						if (trig == UNDEFINED && root.containsKey("trigger"))
+						{
+								trig = getTriggerID(root["trigger"]);
+						}
+						commandCallback(meth, cid, val, trig);
 						handled = true;
 					}
 				}
