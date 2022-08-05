@@ -157,7 +157,6 @@ bool SherlockedClass::parse(char * incomingMessage)
 		if (root.containsKey("sender"))
 		{
 		  const char* s = root["sender"];
-		  Serial.println(s);
 		  if (strcmp(s, this->_name) == 0) // We sent this message, dont parse!
 		  {
 			return false;

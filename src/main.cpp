@@ -6,21 +6,51 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 
+// general settings
+const char firmware_version = "0.1";
+
 
 // network settings
 const char* ssid = "Wireless Funtime Palace";
 const char* password = "radiorijnmond";
-char hostname[] ="Orb";
-char startMessage[] = "Orb is online";
-char gen_topic[] = "alch";  
-char puzzle_topic[] = "alch/centrepiece"; 
-char module_topic[] = "alch/centrepiece/controller";
+const char hostname[] ="controller";
+const char gen_topic[] = "alch";  
+const char puzzle_topic[] = "alch/centrepiece"; 
+const char module_topic[] = "alch/centrepiece/controller";
 IPAddress server(192, 168, 178, 214);
-
-// set up the wifi
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+
+void pubMsg(char* msg)
+{
+  Serial.println(msg);
+  client.publish(puzzle_topic, msg);
+}
+
+void pubMsg_kb(char * method, char * extra)
+{
+  char sprBuffer[200];
+  sprintf(sprBuffer, "{\"sender\":\"%s\",\"method\":%s %s}", hostname, method, extra);
+  Serial.println(sprBuffer);
+  client.publish(puzzle_topic, sprBuffer);
+}
+
+///
+/// Beginning of the functions for the specific puzzle
+///
+
+void resetPuzzle(){
+  pubMsg_kb("info", ", \"state\":reset\"");
+};
+
+
+
+
+// set up the wifi
+
+
 
 void initWiFi() {
   WiFi.mode(WIFI_STA);
@@ -34,7 +64,7 @@ void initWiFi() {
 }
 
 
-// Here starts the ACE/MQTT implementation - this is rather long
+// Here starts the ACE/MQTT implementation --- this is rather long
 #define dbf Serial.printf
 char _incomingMessage[MESSAGE_LENGTH];
 uint32_t _lastMqttSend = 0;
@@ -54,7 +84,7 @@ void reconnect() {
     if (client.connect(hostname)) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish(puzzle_topic, startMessage);
+      pubMsg_kb("info", ", \"connected\":true,\", \"trigger\":\"startup\"");
       // ... and resubscribe
       client.subscribe(gen_topic);
       client.subscribe(puzzle_topic);
@@ -77,17 +107,12 @@ void callback(char* topic, byte* payload, unsigned int length){
         _incomingMessage[incMsgLen] = (char)payload[i];
         incMsgLen ++;
     }
-    _incomingMessage[incMsgLen] = '\0'; // add 0 at the end for str fucntions
+    _incomingMessage[incMsgLen] = '\0'; // add 0 at the end for str functions
     incMsgLen ++;
-    // parseCommand(_incomingMessage);
     Sherlocked.parse(_incomingMessage);
 }
 
-void pubMsg(char * msg)
-{
-  Serial.println(msg);
-  client.publish(puzzle_topic, msg);
-}
+
 
 /* Always keep track of the puzzle state locally */
 uint8_t _state = S_IDLE;
@@ -110,12 +135,12 @@ void commandCallback(int meth, int cmd, const char * value, int triggerID)
   {
     case CMD_RESET:
       dbf("Received Puzzle RESET from Sherlocked\n");
-//      resetPuzzle();
+      resetPuzzle();
       break;
 
     case CMD_REBOOT:
       dbf("Received Reboot from Sherlocked\n");
-//      ESP.restart();
+      ESP.restart();
       break;
 
     case CMD_SYNC:
@@ -302,6 +327,14 @@ void jsonCallback(JsonObject & json)
 // end of the ACE/MQTT implementation
 
 
+
+
+
+
+
+
+
+
 void setup()
 {
     Serial.begin(115200);
@@ -334,6 +367,11 @@ void setup()
     Serial.println();
     Serial.println("Initializing...");
     Serial.flush();
+    while (Serial.available()){ 
+        Serial.read();
+    }
+
+
 }
 
 
@@ -346,13 +384,13 @@ void loop()
     }
     client.loop();
 
-    // if (Serial.available()) {
-    //     String incomingMqttMessage = Serial.readStringUntil('\n');
-    //     // The parser accepts a char * (c string)
-    //     char msgBuf[1024];
-    //     strcpy(msgBuf, incomingMqttMessage.c_str());
-    //     Sherlocked.parse(msgBuf);
-    // }
+    if (Serial.available()) {
+        String incomingMqttMessage = Serial.readStringUntil('\n');
+        // The parser accepts a char * (c string)
+        char msgBuf[1024];
+        strcpy(msgBuf, incomingMqttMessage.c_str());
+        Sherlocked.parse(msgBuf);
+    }
     /* Keep server up to date about input and output changes*/
     static uint32_t lastSend = 0;
     if(millis() - lastSend > 30000)

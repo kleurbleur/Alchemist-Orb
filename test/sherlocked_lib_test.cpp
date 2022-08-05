@@ -1,49 +1,56 @@
 #include <Arduino.h>
-#include <NeoPixelBus.h>
-#include <Ramp.h> 
-#include <StopWatch.h>
+// #include <NeoPixelBus.h>
+// #include <Ramp.h> 
+// #include <StopWatch.h>
 #include <Sherlocked.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
+
+// general settings
+const char firmware_version = "0.1";
 
 
 // network settings
 const char* ssid = "Wireless Funtime Palace";
 const char* password = "radiorijnmond";
-char hostname[] ="Orb";
-char startMessage[] = "Orb is online";
-char gen_topic[] = "alch";  
-char puzzle_topic[] = "alch/centrepiece"; 
-char module_topic[] = "alch/centrepiece/controller";
+const char hostname[] ="controller";
+const char gen_topic[] = "alch";  
+const char puzzle_topic[] = "alch/centrepiece"; 
+const char module_topic[] = "alch/centrepiece/controller";
 IPAddress server(192, 168, 178, 214);
-
-// settings
-const int max_intensity = 10;    // max of 255
-const int min_intensity = 1;     
-const int duration = 1000;       // time it takes to go back and forth between max and min intensity
-const int inbetween_time = 30;   // off time in between the 3 individual white leds in a smd5050
-
-
-// let strip settings
-const uint16_t PixelCount = 144; 
-const uint8_t DotClockPin = 14;
-const uint8_t DotDataPin = 13;  
-const int8_t DotChipSelectPin = -1;
-// Hardware SPI on 20MHz. Most efficient and speedy method available. 
-NeoPixelBus<DotStarBgrFeature, DotStarSpi20MhzMethod> strip(PixelCount);
-
-// setup the ramps
-ramp white_1_ramp;
-ramp white_2_ramp;
-ramp white_3_ramp;
-
-// define the timing
-StopWatch sw;
-
-// set up the wifi
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+
+void pubMsg(char* msg)
+{
+  Serial.println(msg);
+  client.publish(puzzle_topic, msg);
+}
+
+void pubMsg_kb(char * method, char * extra)
+{
+  char sprBuffer[200];
+  sprintf(sprBuffer, "{\"sender\":\"%s\",\"method\":%s %s}", hostname, method, extra);
+  Serial.println(sprBuffer);
+  client.publish(puzzle_topic, sprBuffer);
+}
+
+///
+/// Beginning of the functions for the specific puzzle
+///
+
+void resetPuzzle(){
+  pubMsg_kb("info", ", \"state\":reset\"");
+};
+
+
+
+
+// set up the wifi
+
+
 
 void initWiFi() {
   WiFi.mode(WIFI_STA);
@@ -57,7 +64,7 @@ void initWiFi() {
 }
 
 
-// Here starts the ACE/MQTT implementation - this is rather long
+// Here starts the ACE/MQTT implementation --- this is rather long
 #define dbf Serial.printf
 char _incomingMessage[MESSAGE_LENGTH];
 uint32_t _lastMqttSend = 0;
@@ -77,7 +84,7 @@ void reconnect() {
     if (client.connect(hostname)) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish(puzzle_topic, startMessage);
+      pubMsg_kb("info", ", \"connected\":true,\", \"trigger\":\"startup\"");
       // ... and resubscribe
       client.subscribe(gen_topic);
       client.subscribe(puzzle_topic);
@@ -100,16 +107,12 @@ void callback(char* topic, byte* payload, unsigned int length){
         _incomingMessage[incMsgLen] = (char)payload[i];
         incMsgLen ++;
     }
-    _incomingMessage[incMsgLen] = '\0'; // add 0 at the end for str fucntions
+    _incomingMessage[incMsgLen] = '\0'; // add 0 at the end for str functions
     incMsgLen ++;
-    // parseCommand(_incomingMessage);
     Sherlocked.parse(_incomingMessage);
 }
 
-void pubMsg(char * msg)
-{
-  Serial.println(msg);
-}
+
 
 /* Always keep track of the puzzle state locally */
 uint8_t _state = S_IDLE;
@@ -132,12 +135,12 @@ void commandCallback(int meth, int cmd, const char * value, int triggerID)
   {
     case CMD_RESET:
       dbf("Received Puzzle RESET from Sherlocked\n");
-//      resetPuzzle();
+      resetPuzzle();
       break;
 
     case CMD_REBOOT:
       dbf("Received Reboot from Sherlocked\n");
-//      ESP.restart();
+      ESP.restart();
       break;
 
     case CMD_SYNC:
@@ -324,6 +327,14 @@ void jsonCallback(JsonObject & json)
 // end of the ACE/MQTT implementation
 
 
+
+
+
+
+
+
+
+
 void setup()
 {
     Serial.begin(115200);
@@ -331,8 +342,12 @@ void setup()
 
     initWiFi();
 
+    delay(1000);
+
     client.setServer(server, 1883);
     client.setCallback(callback);
+
+    delay(1000);
 
     /* Set the name for this controller, this should be unqiue within */
     Sherlocked.setName("orb");
@@ -347,36 +362,16 @@ void setup()
     /* Catch-all callback for json messages that were not handled by other callbacks */
     Sherlocked.setJSONCallback(jsonCallback);
 
-
+    delay(1000);
 
     Serial.println();
     Serial.println("Initializing...");
     Serial.flush();
+    while (Serial.available()){ 
+        Serial.read();
+    }
 
-    // begin the strip communication with the desired pins, since it's an ESP32 we can use all we want. 
-    strip.Begin(DotClockPin, DotDataPin, DotDataPin, DotChipSelectPin);
-    
-    // this resets all the neopixels to an off state
-    strip.ClearTo(0);
-    strip.Show();
 
-    Serial.println();
-    Serial.println("Running...");
-
-    white_1_ramp.setGrain(1);                         // set grain to 1 ms
-    white_1_ramp.go(min_intensity);                               // make sure to start at 0
-    white_1_ramp.go(max_intensity, duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down
-
-    white_2_ramp.setGrain(1);                         // set grain to 1 ms
-    white_2_ramp.go(min_intensity);                               // make sure to start at 0
-    white_2_ramp.go(max_intensity, duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down
-
-    white_3_ramp.setGrain(1);                         // set grain to 1 ms
-    white_3_ramp.go(min_intensity);                               // make sure to start at 0
-    white_3_ramp.go(max_intensity, duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down       
-
-    // start the timer
-    sw.start();    
 }
 
 
@@ -405,36 +400,6 @@ void loop()
         int inputValue = random(0, 255);
         pubMsg(Sherlocked.sendInput(inputId, inputValue, T_INPUT));
     }
-
-
-
-
-
-    // if (sw.elapsed() >= inbetween_time) {
-    //     int white_1_i = white_1_ramp.update();
-    //     Serial.print("white_1_i: ");
-    //     Serial.println(white_1_i);
-    //     strip.ClearTo(RgbColor(0, white_1_i, 0));
-    //     strip.Show();
-    // }
-
-    // if (sw.elapsed() >= (inbetween_time * 2)) {
-    //     int white_2_i = white_2_ramp.update();
-    //     Serial.print("white_2_i: ");
-    //     Serial.println(white_2_i);
-    //     strip.ClearTo(RgbColor(white_2_i, 0, 0));
-    //     strip.Show();
-    // }
-
-    // if (sw.elapsed() >= (inbetween_time * 3)) {
-    //     int white_3_i = white_3_ramp.update();
-    //     Serial.print("white_3_i: ");
-    //     Serial.println(white_3_i);
-    //     strip.ClearTo(RgbColor(0, 0, white_3_i));
-    //     strip.Show();
-    //     sw.reset();
-    //     sw.start();
-    // }   
 
 }
 
