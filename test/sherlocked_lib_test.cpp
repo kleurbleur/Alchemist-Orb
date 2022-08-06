@@ -7,7 +7,7 @@
 #include <WiFi.h>
 
 // general settings
-const char firmware_version = "0.1";
+const char* firmware_version = "0.1";
 
 
 // network settings
@@ -22,6 +22,9 @@ IPAddress server(192, 168, 178, 214);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+// declare function prototypes 
+void pubMsg_kb(char * method, char * param1=NULL, char * val1=NULL, char * param2=NULL, char * val2=NULL );
+
 
 void pubMsg(char* msg)
 {
@@ -29,20 +32,46 @@ void pubMsg(char* msg)
   client.publish(puzzle_topic, msg);
 }
 
-void pubMsg_kb(char * method, char * extra)
+
+// actual function
+void pubMsg_kb(char * method, char * param1, char * val1, char * param2, char * val2 )
 {
-  char sprBuffer[200];
-  sprintf(sprBuffer, "{\"sender\":\"%s\",\"method\":%s %s}", hostname, method, extra);
-  Serial.println(sprBuffer);
-  client.publish(puzzle_topic, sprBuffer);
+  char jsonMsg[200], arg1[50], arg2[50];
+
+  if (param1 && val1)
+  {
+    sprintf(arg1, ", \"%s\":\"%s\"", param1, val1); 
+  }
+  else if (param1 && !val1){
+    Serial.println("function pubMsg: Please supply a value with the parameter 1");
+  }
+  else if (param1==NULL && val1==NULL ){
+    sprintf(arg1, ""); // this can be cleaner I guess but without it arg1 would be filled with \xa5\xa5\xa5 etcetera 
+  }  
+
+  if (param2 && val2)
+  {
+    sprintf(arg2, ", \"%s\":\"%s\"", param2, val2); 
+  }
+  else if (param2 && !val2)
+  {
+    Serial.println("function pubMsg: Please supply a value with the parameter 2");
+  }
+  else if (param2==NULL && val2==NULL){
+    sprintf(arg2, ""); // this can be cleaner I guess but without it arg2 would be filled with \xa5\xa5\xa5 etcetera 
+  }  
+
+  sprintf(jsonMsg, "{\"sender\":\"%s\" , \"method\":\"%s\" %s %s}", hostname, method, arg1, arg2);
+  Serial.print("arg2: ");
+  Serial.println(arg2);
+  Serial.println(jsonMsg);
+  client.publish(puzzle_topic, jsonMsg);
 }
 
-///
-/// Beginning of the functions for the specific puzzle
-///
+
 
 void resetPuzzle(){
-  pubMsg_kb("info", ", \"state\":reset\"");
+  pubMsg_kb("info", "state", "reset");
 };
 
 
@@ -84,7 +113,8 @@ void reconnect() {
     if (client.connect(hostname)) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      pubMsg_kb("info", ", \"connected\":true,\", \"trigger\":\"startup\"");
+      pubMsg_kb("info", "connected", "true", "trigger", "startup");
+      // pubMsg_kb("info", ", \"connected\":true,\", \"trigger\":\"startup\"");
       // ... and resubscribe
       client.subscribe(gen_topic);
       client.subscribe(puzzle_topic);
