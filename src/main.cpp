@@ -7,7 +7,7 @@
 #include <WiFi.h>
 
 // general settings
-const char* firmware_version = "0.1";
+char firmware_version[] = "0.1";
 
 
 // network settings
@@ -23,7 +23,7 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 // declare function prototypes 
-void pubMsg_kb(char * method, char * param1=NULL, char * val1=NULL, char * param2=NULL, char * val2=NULL );
+void pubMsg_kb(char method[], char param1[]='\0', char val1[]='\0', char param2[]='\0', char val2[]='\0' );
 
 
 void pubMsg(char* msg)
@@ -34,36 +34,40 @@ void pubMsg(char* msg)
 
 
 // actual function
-void pubMsg_kb(char * method, char * param1, char * val1, char * param2, char * val2 )
+void pubMsg_kb(char method[], char param1[], char val1[], char param2[], char val2[])
 {
-  char jsonMsg[200], arg1[50], arg2[50];
+  char jsonMsg[200], arg1[200], arg2[200];
+  Serial.println(val1[0]);
+  Serial.println(val2[0]);
 
-  if (param1 && val1)
-  {
-    sprintf(arg1, ", \"%s\":\"%s\"", param1, val1); 
+  if (param1 && val1){
+    if (val1[0]=='{'){
+      sprintf(arg1, ",\"%s\":%s", param1, val1); 
+    } else {
+      sprintf(arg1, ",\"%s\":\"%s\"", param1, val1); 
+    }
   }
   else if (param1 && !val1){
-    Serial.println("function pubMsg: Please supply a value with the parameter 1");
+    Serial.println("function pubMsg: Please supply a value with parameter 1");
   }
-  else if (param1==NULL && val1==NULL ){
-    sprintf(arg1, ""); // this can be cleaner I guess but without it arg1 would be filled with \xa5\xa5\xa5 etcetera 
+  else if (param1=='\0' && val1=='\0' ){
+    memset(arg1, 0, 50);
   }  
 
-  if (param2 && val2)
-  {
-    sprintf(arg2, ", \"%s\":\"%s\"", param2, val2); 
+  if (param2 && val2){
+    if (val2[0]=='{'){
+      sprintf(arg2, ",\"%s\":%s", param2, val2); 
+    } else {
+      sprintf(arg2, ",\"%s\":\"%s\"", param2, val2); 
+    }  }
+  else if (param2 && !val2){
+    Serial.println("function pubMsg: Please supply a value with parameter 2");
   }
-  else if (param2 && !val2)
-  {
-    Serial.println("function pubMsg: Please supply a value with the parameter 2");
-  }
-  else if (param2==NULL && val2==NULL){
-    sprintf(arg2, ""); // this can be cleaner I guess but without it arg2 would be filled with \xa5\xa5\xa5 etcetera 
+  else if (param2=='\0' && val2=='\0'){
+    memset(arg2, 0, 50);
   }  
 
-  sprintf(jsonMsg, "{\"sender\":\"%s\" , \"method\":\"%s\" %s %s}", hostname, method, arg1, arg2);
-  Serial.print("arg2: ");
-  Serial.println(arg2);
+  sprintf(jsonMsg, "{\"sender\":\"%s\",\"method\":\"%s\"%s%s}", hostname, method, arg1, arg2);
   Serial.println(jsonMsg);
   client.publish(puzzle_topic, jsonMsg);
 }
@@ -78,8 +82,8 @@ void resetPuzzle(){
 
 
 // set up the wifi
-
-
+char localIP[16];
+char macAddress[18];
 
 void initWiFi() {
   WiFi.mode(WIFI_STA);
@@ -89,8 +93,13 @@ void initWiFi() {
     Serial.print('.');
     delay(1000);
   }
-  Serial.println(WiFi.localIP());
+  WiFi.localIP().toString().toCharArray(localIP, 16);
+  strncpy( macAddress, WiFi.macAddress().c_str(), sizeof(macAddress) );
+  Serial.println(localIP);
+  Serial.println(macAddress);  
 }
+
+
 
 
 // Here starts the ACE/MQTT implementation --- this is rather long
@@ -99,9 +108,6 @@ char _incomingMessage[MESSAGE_LENGTH];
 uint32_t _lastMqttSend = 0;
 char _pubBuf[MESSAGE_LENGTH];
 
-/*  Phony publish function; replace this with an actual MQTT pub function
-    Make sure to publish in the 
-*/
 
 void reconnect() {
   // Loop until we're reconnected
@@ -114,7 +120,6 @@ void reconnect() {
       Serial.println("connected");
       // Once connected, publish an announcement...
       pubMsg_kb("info", "connected", "true", "trigger", "startup");
-      // pubMsg_kb("info", ", \"connected\":true,\", \"trigger\":\"startup\"");
       // ... and resubscribe
       client.subscribe(gen_topic);
       client.subscribe(puzzle_topic);
@@ -178,20 +183,26 @@ void commandCallback(int meth, int cmd, const char * value, int triggerID)
       break;
 
     case CMD_OTA:
-    dbf("OTA Firmware update command\n");
+      dbf("OTA Firmware update command\n");
       // value contains the file URL for the OTA command
       // doOTA(value);
       break;
 
     case INFO_SYSTEM:
+      dbf("system info requested\n");
+      char system[200];
+      sprintf(system, "{ \"ip\": \"%s\", \"MAC\": \"%s\", \"firmware\": \"%s\" }", localIP, macAddress, firmware_version);
+      pubMsg_kb("info", "info", system, "trigger", "request");
         // Expects to receive back system info such as local IP ('ip'), Mac address ('mac') and Firmware Version ('fw')
       break;
 
     case INFO_STATE:
-        pubMsg(Sherlocked.sendState(getState(), T_REQUEST));
+      dbf("state requested\n");
+      pubMsg(Sherlocked.sendState(getState(), T_REQUEST));
       break;
 
     case INFO_FULLSTATE:
+      dbf("full state requested\n");
       // Expects to receive back a full state with all relevant inputs and outputs
       break;
   }

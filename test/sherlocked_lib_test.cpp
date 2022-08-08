@@ -23,7 +23,7 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 // declare function prototypes 
-void pubMsg_kb(char * method, char * param1=NULL, char * val1=NULL, char * param2=NULL, char * val2=NULL );
+void pubMsg_kb(char * method, char * param1=NULL, char * val1=NULL, char * param2='\0', char * val2='\0' );
 
 
 void pubMsg(char* msg)
