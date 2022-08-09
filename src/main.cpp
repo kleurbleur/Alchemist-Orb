@@ -37,9 +37,6 @@ void pubMsg(char* msg)
 void pubMsg_kb(char method[], char param1[], char val1[], char param2[], char val2[])
 {
   char jsonMsg[200], arg1[200], arg2[200];
-  Serial.println(val1[0]);
-  Serial.println(val2[0]);
-
   if (param1 && val1){
     if (val1[0]=='{'){
       sprintf(arg1, ",\"%s\":%s", param1, val1); 
@@ -104,19 +101,21 @@ void initWiFi() {
 
 // Here starts the ACE/MQTT implementation --- this is rather long
 #define dbf Serial.printf
+char lastWillMsg[110];
 char _incomingMessage[MESSAGE_LENGTH];
 uint32_t _lastMqttSend = 0;
 char _pubBuf[MESSAGE_LENGTH];
 
 
 void reconnect() {
+  sprintf(lastWillMsg, "{\"sender\":\"%s\",\"method\":\"info\",\"state\":\"offline\",\"trigger\":\"disconnect\"}", hostname);
   // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection to ");
     Serial.print(server);
     Serial.print("...");
     // Attempt to connect
-    if (client.connect(hostname)) {
+    if (client.connect(hostname, "", "", puzzle_topic, 1, true, lastWillMsg)) {
       Serial.println("connected");
       // Once connected, publish an announcement...
       pubMsg_kb("info", "connected", "true", "trigger", "startup");
@@ -179,11 +178,11 @@ void commandCallback(int meth, int cmd, const char * value, int triggerID)
       break;
 
     case CMD_SYNC:
-      dbf("Sync Command not implemented for this board\n");
+      dbf("Sync Command not implemented for this board\n");  // en is ook niet nodig, alleen voor files belangrijk
       break;
 
     case CMD_OTA:
-      dbf("OTA Firmware update command\n");
+      dbf("OTA Firmware update command\n"); // deze gaan we wel doen, Serge stuurt me voorbeeld code
       // value contains the file URL for the OTA command
       // doOTA(value);
       break;
