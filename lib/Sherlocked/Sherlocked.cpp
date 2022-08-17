@@ -194,8 +194,8 @@ bool SherlockedClass::parse(char * incomingMessage)
 		
 		
 		dbf("Sherlocked.parse() : ");
-  	root.printTo(Serial);
-  	Serial.println();
+		root.printTo(Serial);
+		Serial.println();
 
 		if (meth == M_PUT || meth == M_INFO)
 		{
@@ -292,17 +292,17 @@ bool SherlockedClass::parse(char * incomingMessage)
 					char val[64];
 					strcpy(val, "");
 					if (root.containsKey("file"))
-				  {
+					{
 						const char* file = root["file"];
 						strcpy(val, file);
 					}
 					if(commandCallback)
 					{
 						int trig = getTriggerID(sender);
-				  	if (trig == UNDEFINED && root.containsKey("trigger"))
-				  	{
-							trig = getTriggerID(root["trigger"]);
-				  	}
+						if (trig == UNDEFINED && root.containsKey("trigger"))
+						{
+								trig = getTriggerID(root["trigger"]);
+						}
 						commandCallback(meth, cid, val, trig);
 						handled = true;
 					}

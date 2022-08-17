@@ -7,7 +7,7 @@
 #include <WiFi.h>
 
 // general settings
-char firmware_version[] = "0.1";
+char firmware_version[] = "0.2";
 
 
 // network settings
@@ -23,10 +23,10 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 // declare function prototypes 
-void pubMsg_kb(char method[], char param1[]='\0', char val1[]='\0', char param2[]='\0', char val2[]='\0' );
+void pubMsg_kb(const char * method, const char *param1=(char*)'\0', const char *val1=(char*)'\0', const char *param2=(char*)'\0', const char *val2=(char*)'\0' );
 
 
-void pubMsg(char* msg)
+void pubMsg(char msg[])
 {
   Serial.println(msg);
   client.publish(puzzle_topic, msg);
@@ -34,7 +34,7 @@ void pubMsg(char* msg)
 
 
 // actual function
-void pubMsg_kb(char method[], char param1[], char val1[], char param2[], char val2[])
+void pubMsg_kb(const char * method, const char *param1, const char *val1, const char *param2, const char *val2)
 {
   char jsonMsg[200], arg1[200], arg2[200];
   if (param1 && val1){
@@ -82,6 +82,7 @@ void resetPuzzle(){
 char localIP[16];
 char macAddress[18];
 
+
 void initWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -115,7 +116,7 @@ void reconnect() {
     Serial.print(server);
     Serial.print("...");
     // Attempt to connect
-    if (client.connect(hostname, "", "", puzzle_topic, 1, true, lastWillMsg)) {
+    if (client.connect(hostname, "", "", puzzle_topic, 0, true, lastWillMsg)) {
       Serial.println("connected");
       // Once connected, publish an announcement...
       pubMsg_kb("info", "connected", "true", "trigger", "startup");
@@ -133,12 +134,16 @@ void reconnect() {
   }
 }
 
+void mqttDisconnect(){
+  client.disconnect();
+}
+
 void callback(char* topic, byte* payload, unsigned int length){
     uint16_t incMsgLen = 0;
     for (int i = 0; i < length; i++)
     {
         char c = (char)payload[i];
-        _incomingMessage[incMsgLen] = (char)payload[i];
+        _incomingMessage[incMsgLen] = c;
         incMsgLen ++;
     }
     _incomingMessage[incMsgLen] = '\0'; // add 0 at the end for str functions
@@ -162,50 +167,7 @@ uint8_t getState()
   return _state;
 }
 
-/* The commandCallback function is called (activated) when a new 'cmd' or 'info' command is received */
-void commandCallback(int meth, int cmd, const char * value, int triggerID)
-{
-  switch (cmd)
-  {
-    case CMD_RESET:
-      dbf("Received Puzzle RESET from Sherlocked\n");
-      resetPuzzle();
-      break;
 
-    case CMD_REBOOT:
-      dbf("Received Reboot from Sherlocked\n");
-      ESP.restart();
-      break;
-
-    case CMD_SYNC:
-      dbf("Sync Command not implemented for this board\n");  // en is ook niet nodig, alleen voor files belangrijk
-      break;
-
-    case CMD_OTA:
-      dbf("OTA Firmware update command\n"); // deze gaan we wel doen, Serge stuurt me voorbeeld code
-      // value contains the file URL for the OTA command
-      // doOTA(value);
-      break;
-
-    case INFO_SYSTEM:
-      dbf("system info requested\n");
-      char system[200];
-      sprintf(system, "{ \"ip\": \"%s\", \"MAC\": \"%s\", \"firmware\": \"%s\" }", localIP, macAddress, firmware_version);
-      pubMsg_kb("info", "info", system, "trigger", "request");
-        // Expects to receive back system info such as local IP ('ip'), Mac address ('mac') and Firmware Version ('fw')
-      break;
-
-    case INFO_STATE:
-      dbf("state requested\n");
-      pubMsg(Sherlocked.sendState(getState(), T_REQUEST));
-      break;
-
-    case INFO_FULLSTATE:
-      dbf("full state requested\n");
-      // Expects to receive back a full state with all relevant inputs and outputs
-      break;
-  }
-}
 
 /* State callback is triggered whenever a 'state' is received */
 void stateCallback(int meth, int state, int trigger)
@@ -339,9 +301,9 @@ void jsonCallback(JsonObject & json)
   if (json.containsKey("r") && json.containsKey("g") && json.containsKey("b"))
   {
     // Extract the values from the JSON object
-     uint8_t r = json["r"];
-     uint8_t g = json["g"];
-     uint8_t b = json["b"];
+    //  uint8_t r = json["r"];
+    //  uint8_t g = json["g"];
+    //  uint8_t b = json["b"];
      // And use it in a suitable function
      // setLEDColor(r, g, b); 
   }
@@ -350,7 +312,7 @@ void jsonCallback(JsonObject & json)
   else if(json.containsKey("direction")) 
   {
     // Extract the value from the JSON object
-    const char* pos = json["direction"];
+    const char * pos = json["direction"];
     // Compare the value with expected values
     if (strcmp(pos, "left") == 0)
     {
@@ -368,10 +330,262 @@ void jsonCallback(JsonObject & json)
 
 
 
+// START OF THE OTA CODE
 
 
+#include <Update.h>
+WiFiClient otaClient;
+uint16_t _otaTimeout = 15000;
 
+int contentLength = 0;
+bool isValidContentType = false;
 
+String host = "10.0.0.10";
+int port = 3034; // Non https. For HTTPS 443.  HTTPS doesn't work yet
+
+String bin; // bin file name with a slash in front.
+
+void setBinVers(const char binfile[])
+{
+  bin = "/ota/";
+  String bf = String(binfile);
+  bin += bf;
+  Serial.print("Setting bin file to: ");
+  Serial.println(bin);
+}
+
+// Utility to extract header value from headers
+String getHeaderValue(String header, String headerName)
+{
+  return header.substring(strlen(headerName.c_str()));
+}
+
+// OTA Logic
+void execOTA()
+{
+  otaClient.setTimeout(_otaTimeout);
+  Serial.println("Connecting to: " + String(host));
+  if (otaClient.connect(host.c_str(), port)) {
+    // Connection Succeed.
+    Serial.println("Fetching Bin: " + String(bin));
+    // Get the contents of the bin file
+    otaClient.print(String("GET ") + bin + " HTTP/1.1\r\n" +
+                    "Host: " + host + "\r\n" +
+                    "Cache-Control: no-cache\r\n" +
+                    "Connection: close\r\n\r\n");
+
+    // Check what is being sent
+    //    Serial.print(String("GET ") + bin + " HTTP/1.1\r\n" +
+    //                 "Host: " + host + "\r\n" +
+    //                 "Cache-Control: no-cache\r\n" +
+    //                 "Connection: close\r\n\r\n");
+
+    unsigned long timeout = millis();
+    while (otaClient.available() == 0) {
+      if (millis() - timeout > _otaTimeout) {
+        Serial.println("Client Timeout !");
+        otaClient.stop();
+        return;
+      }
+    }
+    // Once the response is available,
+    // check stuff
+
+    /*
+       Response Structure
+        HTTP/1.1 200 OK
+        x-amz-id-2: NVKxnU1aIQMmpGKhSwpCBh8y2JPbak18QLIfE+OiUDOos+7UftZKjtCFqrwsGOZRN5Zee0jpTd0=
+        x-amz-request-id: 2D56B47560B764EC
+        Date: Wed, 14 Jun 2017 03:33:59 GMT
+        Last-Modified: Fri, 02 Jun 2017 14:50:11 GMT
+        ETag: "d2afebbaaebc38cd669ce36727152af9"
+        Accept-Ranges: bytes
+        Content-Type: application/octet-stream
+        Content-Length: 357280
+        Server: AmazonS3
+
+        {{BIN FILE CONTENTS}}
+
+    */
+    while (otaClient.available()) {
+      // read line till /n
+      String line = otaClient.readStringUntil('\n');
+      // remove space, to check if the line is end of headers
+      line.trim();
+
+      // if the the line is empty,
+      // this is end of headers
+      // break the while and feed the
+      // remaining `otaClient` to the
+      // Update.writeStream();
+      if (!line.length()) {
+        //headers ended
+        break; // and get the OTA started
+      }
+
+      // Check if the HTTP Response is 200
+      // else break and Exit Update
+      if (line.startsWith("HTTP/1.1")) {
+        if (line.indexOf("200") < 0) {
+          Serial.println("Got a non 200 status code from server. Exiting OTA Update.");
+          break;
+        }
+      }
+
+      // extract headers here
+      // Start with content length
+      if (line.startsWith("Content-Length: ")) {
+        contentLength = atoi((getHeaderValue(line, "Content-Length: ")).c_str());
+        Serial.println("Got " + String(contentLength) + " bytes from server");
+      }
+
+      // Next, the content type
+      if (line.startsWith("Content-Type: ")) {
+        String contentType = getHeaderValue(line, "Content-Type: ");
+        Serial.println("Got " + contentType + " payload.");
+        if (contentType == "application/octet-stream") {
+          isValidContentType = true;
+        }
+      }
+    }
+  } else {
+    // Connect to failed
+    // May be try?
+    // Probably a choppy network?
+    Serial.println("Connection to " + String(host) + " failed. Please check your setup");
+    // retry??
+    // execOTA();
+  }
+
+  // Check what is the contentLength and if content type is `application/octet-stream`
+  Serial.println("contentLength : " + String(contentLength) + ", isValidContentType : " + String(isValidContentType));
+
+  // check contentLength and content type
+  if (contentLength && isValidContentType) {
+    // Check if there is enough to OTA Update
+    bool canBegin = Update.begin(contentLength);
+
+    // If yes, begin
+    if (canBegin) {
+      Serial.println("Begin OTA. This may take 2 - 5 mins to complete. Things might be quite for a while.. Patience!");
+      // No activity would appear on the Serial monitor
+      // So be patient. This may take 2 - 5mins to complete
+      size_t written = Update.writeStream(otaClient);
+
+      if (written == contentLength) {
+        Serial.println("Written : " + String(written) + " successfully");
+      } else {
+        Serial.println("Written only : " + String(written) + "/" + String(contentLength) + ". Retry?" );
+        // retry??
+        // execOTA();
+      }
+
+      if (Update.end()) {
+        Serial.println("OTA done!");
+        if (Update.isFinished()) {
+          Serial.println("Update successfully completed. Rebooting.");
+          ESP.restart();
+        } else {
+          Serial.println("Update not finished? Something went wrong!");
+        }
+      } else {
+        Serial.println("Error Occurred. Error #: " + String(Update.getError()));
+      }
+    } else {
+      // not enough space to begin OTA
+      // Understand the partitions and
+      // space availability
+      Serial.println("Not enough space to begin OTA");
+      otaClient.flush();
+    }
+  } else {
+    Serial.println("There was no content in the response");
+    otaClient.flush();
+  }
+}
+
+void startOTA()
+{
+  dbf("StartOTA\n");
+  if (bin != NULL && !bin.equals(""))
+  {
+    char temp [MESSAGE_LENGTH];
+    bin.toCharArray(temp, bin.length() + 1);
+    dbf("Bin is set to %s\n", temp);
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      initWiFi();
+    }
+    while (WiFi.status() == WL_CONNECTED) {
+      delay(1);  // wait for a bit
+    }
+    char ota[200];
+    sprintf(ota, "{ \"event\": \"OTA\", \"URI\": \"%s\", \"current_firmware\": \"%s\" }", temp, firmware_version);
+    pubMsg_kb("info", "info", ota, "trigger", "disconnect");
+    delay(100);
+    mqttDisconnect();
+    execOTA();
+  }
+  else
+  {
+    dbf("No file for OTA, check for updates?\n");
+//    checkForUpdates();
+  }
+}
+
+void doOTA(const char binfile[])
+{
+  setBinVers(binfile);
+  startOTA();
+}
+
+// END OF THE OTA CODE
+
+// The function that actually does the incoming commands
+/* The commandCallback function is called (activated) when a new 'cmd' or 'info' command is received */
+void commandCallback(int meth, int cmd, const char value[], int triggerID)
+{
+  switch (cmd)
+  {
+    case CMD_RESET:
+      dbf("Received Puzzle RESET from Sherlocked\n");
+      resetPuzzle();
+      break;
+
+    case CMD_REBOOT:
+      dbf("Received Reboot from Sherlocked\n");
+      ESP.restart();
+      break;
+
+    case CMD_SYNC:
+      dbf("Sync Command not implemented for this board\n");  // en is ook niet nodig, alleen voor files belangrijk
+      break;
+
+    case CMD_OTA:
+      dbf("OTA Firmware update command\n"); // deze gaan we wel doen, Serge stuurt me voorbeeld code
+      // value contains the file URL for the OTA command
+      doOTA(value);
+      break;
+
+    case INFO_SYSTEM:
+      dbf("system info requested\n");
+      char system[200];
+      sprintf(system, "{ \"ip\": \"%s\", \"MAC\": \"%s\", \"firmware\": \"%s\" }", localIP, macAddress, firmware_version);
+      pubMsg_kb("info", "info", system, "trigger", "request");
+        // Expects to receive back system info such as local IP ('ip'), Mac address ('mac') and Firmware Version ('fw')
+      break;
+
+    case INFO_STATE:
+      dbf("state requested\n");
+      pubMsg(Sherlocked.sendState(getState(), T_REQUEST));
+      break;
+
+    case INFO_FULLSTATE:
+      dbf("full state requested\n");
+      // Expects to receive back a full state with all relevant inputs and outputs
+      break;
+  }
+}
 
 
 
@@ -390,7 +604,7 @@ void setup()
     delay(1000);
 
     /* Set the name for this controller, this should be unqiue within */
-    Sherlocked.setName("orb");
+    Sherlocked.setName(hostname);
     /* Set callback functions for the various messages that can be received by the Sherlocked ACE system */    
     /* Puzzle State Changes are handled here */
     Sherlocked.setStateCallback(stateCallback);
@@ -410,8 +624,9 @@ void setup()
     while (Serial.available()){ 
         Serial.read();
     }
-
-
+    Serial.print(hostname);
+    Serial.print(" Firmware version: ");
+    Serial.print(firmware_version);
 }
 
 
