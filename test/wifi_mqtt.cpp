@@ -1,26 +1,8 @@
-#include <Arduino.h>
-// #include <NeoPixelBus.h>
-// #include <Ramp.h> 
-// #include <StopWatch.h>
-#include <Sherlocked.h>
-#include <PubSubClient.h>
-#include <WiFi.h>
-
-// general settings
-char firmware_version[] = "0.2";
+#include "wifi_mqtt.h"
 
 
-// network settings
-const char* ssid = "Wireless Funtime Palace";
-const char* password = "radiorijnmond";
-const char hostname[] ="controller";
-const char gen_topic[] = "alch";  
-const char puzzle_topic[] = "alch/centrepiece"; 
-const char module_topic[] = "alch/centrepiece/controller";
-IPAddress server(192, 168, 178, 214);
-
-WiFiClient otaClient;
-PubSubClient client(otaClient);
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 // declare function prototypes 
 void pubMsg_kb(const char * method, const char *param1=(char*)'\0', const char *val1=(char*)'\0', const char *param2=(char*)'\0', const char *val2=(char*)'\0' );
@@ -71,9 +53,6 @@ void pubMsg_kb(const char * method, const char *param1, const char *val1, const 
 
 
 
-void resetPuzzle(){
-  pubMsg_kb("info", "state", "reset");
-};
 
 
 
@@ -334,21 +313,22 @@ void jsonCallback(JsonObject & json)
 
 
 #include <Update.h>
+WiFiClient otaClient;
 uint16_t _otaTimeout = 15000;
 
 int contentLength = 0;
 bool isValidContentType = false;
 
-String host = "192.168.178.214"; // FINAL CHANGE to right server address 
-int port = 8888; // Non https. For HTTPS 443.  HTTPS doesn't work yet
+String host = server;
+int port = 3034; // Non https. For HTTPS 443.  HTTPS doesn't work yet
 
 String bin; // bin file name with a slash in front.
 
 void setBinVers(const char binfile[])
 {
-  // bin = "/ota/";
+  bin = "/ota/";
   String bf = String(binfile);
-  bin = bf;
+  bin += bf;
   Serial.print("Setting bin file to: ");
   Serial.println(bin);
 }
@@ -362,7 +342,7 @@ String getHeaderValue(String header, String headerName)
 // OTA Logic
 void execOTA()
 {
-  // otaClient.setTimeout(_otaTimeout);
+  otaClient.setTimeout(_otaTimeout);
   Serial.println("Connecting to: " + String(host));
   if (otaClient.connect(host.c_str(), port)) {
     // Connection Succeed.
@@ -513,15 +493,14 @@ void startOTA()
     dbf("Bin is set to %s\n", temp);
     if (WiFi.status() != WL_CONNECTED)
     {
-      Serial.println("WiFi is down...");
       initWiFi();
     }
-    // while (WiFi.status() == WL_CONNECTED) {
-    //   delay(1);  // wait for a bit
-    // }
-    char ota_info[200];
-    sprintf(ota_info, "{ \"event\": \"OTA\", \"URI\": \"%s\", \"current_firmware\": \"%s\" }", temp, firmware_version);
-    pubMsg_kb("info", "info", ota_info, "trigger", "disconnect");
+    while (WiFi.status() == WL_CONNECTED) {
+      delay(1);  // wait for a bit
+    }
+    char ota[200];
+    sprintf(ota, "{ \"event\": \"OTA\", \"URI\": \"%s\", \"current_firmware\": \"%s\" }", temp, firmware_version);
+    pubMsg_kb("info", "info", ota, "trigger", "disconnect");
     delay(100);
     mqttDisconnect();
     execOTA();
@@ -586,77 +565,3 @@ void commandCallback(int meth, int cmd, const char value[], int triggerID)
       break;
   }
 }
-
-
-
-void setup()
-{
-    Serial.begin(115200);
-    while (!Serial); // wait for serial attach
-
-    initWiFi();
-
-    delay(1000);
-
-    client.setServer(server, 1883);
-    client.setCallback(callback);
-
-    delay(1000);
-
-    /* Set the name for this controller, this should be unqiue within */
-    Sherlocked.setName(hostname);
-    /* Set callback functions for the various messages that can be received by the Sherlocked ACE system */    
-    /* Puzzle State Changes are handled here */
-    Sherlocked.setStateCallback(stateCallback);
-    /* General Command and Info Messages */
-    Sherlocked.setCommandCallback(commandCallback);
-    /* Inputs and Outputs */
-    Sherlocked.setInputCallback(inputCallback);
-    Sherlocked.setOutputCallback(outputCallback);
-    /* Catch-all callback for json messages that were not handled by other callbacks */
-    Sherlocked.setJSONCallback(jsonCallback);
-
-    delay(1000);
-
-    Serial.println();
-    Serial.println("Initializing...");
-    Serial.flush();
-    while (Serial.available()){ 
-        Serial.read();
-    }
-    Serial.print(puzzle_topic);
-    Serial.print(" ");
-    Serial.print(hostname);
-    Serial.print(" firmware version: ");
-    Serial.println(firmware_version);
-}
-
-
-void loop()
-{
-
-    // ACE/MQTT Stuff
-    if (!client.connected()) {
-        reconnect();
-    }
-    client.loop();
-
-    if (Serial.available()) {
-        String incomingMqttMessage = Serial.readStringUntil('\n');
-        // The parser accepts a char * (c string)
-        char msgBuf[1024];
-        strcpy(msgBuf, incomingMqttMessage.c_str());
-        Sherlocked.parse(msgBuf);
-    }
-    /* Keep server up to date about input and output changes*/
-    static uint32_t lastSend = 0;
-    if(millis() - lastSend > 30000)
-    {
-        lastSend = millis();
-        int inputId = 1;
-        int inputValue = random(0, 255);
-        pubMsg(Sherlocked.sendInput(inputId, inputValue, T_INPUT));
-    }
-
-}
-

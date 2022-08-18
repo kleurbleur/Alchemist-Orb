@@ -19,8 +19,8 @@ const char puzzle_topic[] = "alch/centrepiece";
 const char module_topic[] = "alch/centrepiece/controller";
 IPAddress server(192, 168, 178, 214);
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+WiFiClient otaClient;
+PubSubClient client(otaClient);
 
 // declare function prototypes 
 void pubMsg_kb(const char * method, const char *param1=(char*)'\0', const char *val1=(char*)'\0', const char *param2=(char*)'\0', const char *val2=(char*)'\0' );
@@ -334,22 +334,21 @@ void jsonCallback(JsonObject & json)
 
 
 #include <Update.h>
-WiFiClient otaClient;
 uint16_t _otaTimeout = 15000;
 
 int contentLength = 0;
 bool isValidContentType = false;
 
-String host = "10.0.0.10";
-int port = 3034; // Non https. For HTTPS 443.  HTTPS doesn't work yet
+String host = "192.168.178.214"; // FINAL CHANGE to right server address 
+int port = 8888; // Non https. For HTTPS 443.  HTTPS doesn't work yet
 
 String bin; // bin file name with a slash in front.
 
 void setBinVers(const char binfile[])
 {
-  bin = "/ota/";
+  // bin = "/ota/";
   String bf = String(binfile);
-  bin += bf;
+  bin = bf;
   Serial.print("Setting bin file to: ");
   Serial.println(bin);
 }
@@ -363,7 +362,7 @@ String getHeaderValue(String header, String headerName)
 // OTA Logic
 void execOTA()
 {
-  otaClient.setTimeout(_otaTimeout);
+  // otaClient.setTimeout(_otaTimeout);
   Serial.println("Connecting to: " + String(host));
   if (otaClient.connect(host.c_str(), port)) {
     // Connection Succeed.
@@ -514,14 +513,15 @@ void startOTA()
     dbf("Bin is set to %s\n", temp);
     if (WiFi.status() != WL_CONNECTED)
     {
+      Serial.println("WiFi is down...");
       initWiFi();
     }
-    while (WiFi.status() == WL_CONNECTED) {
-      delay(1);  // wait for a bit
-    }
-    char ota[200];
-    sprintf(ota, "{ \"event\": \"OTA\", \"URI\": \"%s\", \"current_firmware\": \"%s\" }", temp, firmware_version);
-    pubMsg_kb("info", "info", ota, "trigger", "disconnect");
+    // while (WiFi.status() == WL_CONNECTED) {
+    //   delay(1);  // wait for a bit
+    // }
+    char ota_info[200];
+    sprintf(ota_info, "{ \"event\": \"OTA\", \"URI\": \"%s\", \"current_firmware\": \"%s\" }", temp, firmware_version);
+    pubMsg_kb("info", "info", ota_info, "trigger", "disconnect");
     delay(100);
     mqttDisconnect();
     execOTA();
@@ -624,9 +624,11 @@ void setup()
     while (Serial.available()){ 
         Serial.read();
     }
+    Serial.print(puzzle_topic);
+    Serial.print(" ");
     Serial.print(hostname);
-    Serial.print(" Firmware version: ");
-    Serial.print(firmware_version);
+    Serial.print(" firmware version: ");
+    Serial.println(firmware_version);
 }
 
 
