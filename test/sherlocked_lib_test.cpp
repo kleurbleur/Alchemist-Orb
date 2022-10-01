@@ -25,13 +25,11 @@ PubSubClient client(otaClient);
 // declare function prototypes 
 void pubMsg_kb(const char * method, const char *param1=(char*)'\0', const char *val1=(char*)'\0', const char *param2=(char*)'\0', const char *val2=(char*)'\0' );
 
-
 void pubMsg(char msg[])
 {
   Serial.println(msg);
   client.publish(puzzle_topic, msg);
 }
-
 
 // actual function
 void pubMsg_kb(const char * method, const char *param1, const char *val1, const char *param2, const char *val2)
@@ -69,20 +67,16 @@ void pubMsg_kb(const char * method, const char *param1, const char *val1, const 
   client.publish(puzzle_topic, jsonMsg);
 }
 
-
-
+// puzzle controller specific functions
 void resetPuzzle(){
   pubMsg_kb("info", "state", "reset");
 };
 
 
-
-
 // set up the wifi
 char localIP[16];
 char macAddress[18];
-
-
+// initialize wifi function
 void initWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -339,7 +333,7 @@ uint16_t _otaTimeout = 15000;
 int contentLength = 0;
 bool isValidContentType = false;
 
-String host = "192.168.178.214"; // FINAL CHANGE to right server address 
+String host = "192.168.178.215"; // FINAL CHANGE to right server address 
 int port = 8888; // Non https. For HTTPS 443.  HTTPS doesn't work yet
 
 String bin; // bin file name with a slash in front.
@@ -502,7 +496,6 @@ void execOTA()
     otaClient.flush();
   }
 }
-
 void startOTA()
 {
   dbf("StartOTA\n");
@@ -532,13 +525,11 @@ void startOTA()
 //    checkForUpdates();
   }
 }
-
 void doOTA(const char binfile[])
 {
   setBinVers(binfile);
   startOTA();
 }
-
 // END OF THE OTA CODE
 
 // The function that actually does the incoming commands

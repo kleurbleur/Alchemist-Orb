@@ -1,21 +1,46 @@
+/*
+ * wifi_mqtt.h - The unofficial Sherlocked library.
+ *
+ * Copyright (c) 2022
+ * Interactive Matter, by Serge Offermans
+ * serge@interactivematter.nl
+ * 
+ * Reworked by Kleurbleur, Mark Ridder
+ *
+ * All rights reserved. 
+ * LAST UPDATE: 18-08-2022
+*/
+
 #include "wifi_mqtt.h"
 
+WiFiClient otaClient;
+PubSubClient client(otaClient);
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+// set up the wifi vars
+char localIP[16];
+char macAddress[18];
 
-// declare function prototypes 
-void pubMsg_kb(const char * method, const char *param1=(char*)'\0', const char *val1=(char*)'\0', const char *param2=(char*)'\0', const char *val2=(char*)'\0' );
+// setup the ace/mqtt vars
+#define dbf Serial.printf
+char lastWillMsg[110];
+char _incomingMessage[MESSAGE_LENGTH];
+uint32_t _lastMqttSend = 0;
+char _pubBuf[MESSAGE_LENGTH];
+uint8_t _state = S_IDLE;
+
+// setup the ota vars
+uint16_t _otaTimeout = 15000;
+int contentLength = 0;
+bool isValidContentType = false;
+String bin;
 
 
+//ace message functions
 void pubMsg(char msg[])
 {
   Serial.println(msg);
   client.publish(puzzle_topic, msg);
 }
-
-
-// actual function
 void pubMsg_kb(const char * method, const char *param1, const char *val1, const char *param2, const char *val2)
 {
   char jsonMsg[200], arg1[200], arg2[200];
@@ -51,17 +76,7 @@ void pubMsg_kb(const char * method, const char *param1, const char *val1, const 
   client.publish(puzzle_topic, jsonMsg);
 }
 
-
-
-
-
-
-
-// set up the wifi
-char localIP[16];
-char macAddress[18];
-
-
+// initialise wifi
 void initWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
@@ -80,12 +95,6 @@ void initWiFi() {
 
 
 // Here starts the ACE/MQTT implementation --- this is rather long
-#define dbf Serial.printf
-char lastWillMsg[110];
-char _incomingMessage[MESSAGE_LENGTH];
-uint32_t _lastMqttSend = 0;
-char _pubBuf[MESSAGE_LENGTH];
-
 
 void reconnect() {
   sprintf(lastWillMsg, "{\"sender\":\"%s\",\"method\":\"info\",\"state\":\"offline\",\"trigger\":\"disconnect\"}", hostname);
@@ -133,8 +142,6 @@ void callback(char* topic, byte* payload, unsigned int length){
 
 
 /* Always keep track of the puzzle state locally */
-uint8_t _state = S_IDLE;
-
 void setState(uint8_t s, int trigger)
 {
   _state = s;
@@ -312,23 +319,13 @@ void jsonCallback(JsonObject & json)
 // START OF THE OTA CODE
 
 
-#include <Update.h>
-WiFiClient otaClient;
-uint16_t _otaTimeout = 15000;
 
-int contentLength = 0;
-bool isValidContentType = false;
-
-String host = server;
-int port = 3034; // Non https. For HTTPS 443.  HTTPS doesn't work yet
-
-String bin; // bin file name with a slash in front.
 
 void setBinVers(const char binfile[])
 {
-  bin = "/ota/";
+  // bin = "/ota/";
   String bf = String(binfile);
-  bin += bf;
+  bin = bf;
   Serial.print("Setting bin file to: ");
   Serial.println(bin);
 }
@@ -342,20 +339,20 @@ String getHeaderValue(String header, String headerName)
 // OTA Logic
 void execOTA()
 {
-  otaClient.setTimeout(_otaTimeout);
-  Serial.println("Connecting to: " + String(host));
-  if (otaClient.connect(host.c_str(), port)) {
+  // otaClient.setTimeout(_otaTimeout);
+  Serial.println("Connecting to: " + String(ota_host));
+  if (otaClient.connect(ota_host.c_str(), ota_port)) {
     // Connection Succeed.
     Serial.println("Fetching Bin: " + String(bin));
     // Get the contents of the bin file
     otaClient.print(String("GET ") + bin + " HTTP/1.1\r\n" +
-                    "Host: " + host + "\r\n" +
+                    "ota_host: " + ota_host + "\r\n" +
                     "Cache-Control: no-cache\r\n" +
                     "Connection: close\r\n\r\n");
 
     // Check what is being sent
     //    Serial.print(String("GET ") + bin + " HTTP/1.1\r\n" +
-    //                 "Host: " + host + "\r\n" +
+    //                 "ota_host: " + ota_host + "\r\n" +
     //                 "Cache-Control: no-cache\r\n" +
     //                 "Connection: close\r\n\r\n");
 
@@ -431,7 +428,7 @@ void execOTA()
     // Connect to failed
     // May be try?
     // Probably a choppy network?
-    Serial.println("Connection to " + String(host) + " failed. Please check your setup");
+    Serial.println("Connection to " + String(ota_host) + " failed. Please check your setup");
     // retry??
     // execOTA();
   }
@@ -493,14 +490,15 @@ void startOTA()
     dbf("Bin is set to %s\n", temp);
     if (WiFi.status() != WL_CONNECTED)
     {
+      Serial.println("WiFi is down...");
       initWiFi();
     }
-    while (WiFi.status() == WL_CONNECTED) {
-      delay(1);  // wait for a bit
-    }
-    char ota[200];
-    sprintf(ota, "{ \"event\": \"OTA\", \"URI\": \"%s\", \"current_firmware\": \"%s\" }", temp, firmware_version);
-    pubMsg_kb("info", "info", ota, "trigger", "disconnect");
+    // while (WiFi.status() == WL_CONNECTED) {
+    //   delay(1);  // wait for a bit
+    // }
+    char ota_info[200];
+    sprintf(ota_info, "{ \"event\": \"OTA\", \"URI\": \"%s\", \"current_firmware\": \"%s\" }", temp, firmware_version);
+    pubMsg_kb("info", "info", ota_info, "trigger", "disconnect");
     delay(100);
     mqttDisconnect();
     execOTA();

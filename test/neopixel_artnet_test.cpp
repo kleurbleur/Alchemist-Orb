@@ -2,7 +2,8 @@
 #include <Arduino.h>
 #include <NeoPixelBus.h>
 #include <Artnet.h>
-#include <WiFi.h>
+#include <WiFi.h> // has to be included for the artnet lib... sigh
+
 
 
 const char* ssid     = "Wireless Funtime Palace";
