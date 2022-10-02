@@ -36,7 +36,7 @@ void pubMsg_kb(const char * method, const char *param1, const char *val1, const 
 {
   char jsonMsg[200], arg1[200], arg2[200];
   if (param1 && val1){
-    if (val1[0]=='{'){
+    if (val1[0]=='{' || val1[0]=='['){
       sprintf(arg1, ",\"%s\":%s", param1, val1); 
     } else {
       sprintf(arg1, ",\"%s\":\"%s\"", param1, val1); 
@@ -45,12 +45,12 @@ void pubMsg_kb(const char * method, const char *param1, const char *val1, const 
   else if (param1 && !val1){
     Serial.println("function pubMsg: Please supply a value with parameter 1");
   }
-  else if (param1=='\0' && val1=='\0' ){
+  else if (strcmp(param1,nullptr) && strcmp(val1,nullptr) ){
     memset(arg1, 0, 50);
   }  
 
   if (param2 && val2){
-    if (val2[0]=='{'){
+    if (val2[0]=='{' || val2[0]=='['){
       sprintf(arg2, ",\"%s\":%s", param2, val2); 
     } else {
       sprintf(arg2, ",\"%s\":\"%s\"", param2, val2); 
@@ -58,7 +58,7 @@ void pubMsg_kb(const char * method, const char *param1, const char *val1, const 
   else if (param2 && !val2){
     Serial.println("function pubMsg: Please supply a value with parameter 2");
   }
-  else if (param2=='\0' && val2=='\0'){
+  else if (strcmp(param2,nullptr) && strcmp(val2,nullptr) ){
     memset(arg2, 0, 50);
   }  
 
