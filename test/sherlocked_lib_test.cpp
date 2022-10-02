@@ -333,8 +333,8 @@ uint16_t _otaTimeout = 15000;
 int contentLength = 0;
 bool isValidContentType = false;
 
-String host = "192.168.178.215"; // FINAL CHANGE to right server address 
-int port = 8888; // Non https. For HTTPS 443.  HTTPS doesn't work yet
+String host = server.toString(); // FINAL CHANGE to right server address 
+int port = 80; // Non https. For HTTPS 443.  HTTPS doesn't work yet
 
 String bin; // bin file name with a slash in front.
 
