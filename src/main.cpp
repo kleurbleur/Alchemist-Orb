@@ -190,6 +190,38 @@ u_int8_t finale_min_intensity = 25;
 u_int32_t finale_duration = 30000;       // time it takes to go back and forth between max and min intensity
 
 
+
+// the ethernet function
+char localIP[16];
+char macAddress[18];
+int getWifiStrength(int points){
+    long rssi = 0;
+    long averageRSSI = 0; 
+    for (int i=0;i < points;i++){
+        rssi += WiFi.RSSI();
+        delay(20);
+    }
+    averageRSSI = rssi/points;
+    return averageRSSI;
+}
+void initWiFi() {
+    WiFi.disconnect();
+    WiFi.mode(WIFI_OFF);
+    delay(100);
+    WiFi.mode(WIFI_STA);
+    WiFi.persistent(false);
+    delay(100);
+    WiFi.begin(ssid, password);
+    Serial.print("Connecting to WiFi ..");
+    while (WiFi.status() != WL_CONNECTED) {
+        Serial.print('.');
+        delay(1000);
+    }
+    Serial.println(WiFi.localIP());
+    Serial.print("Wifi strength: ");
+    Serial.println(getWifiStrength(10));
+}
+
 // the publish function for ACE/mqtt
 void pubMsg(char msg[])
 {
@@ -307,7 +339,6 @@ void breathing_mode_enable(int start){
     white_3_ramp.pause();
   }
 }
-
 void finale_mode_enable(int start){
   if (start == 1 )
   {
@@ -405,7 +436,19 @@ void outputStateMachine(int id, int value)
     Serial.println("FINALE_DURATION");
     outValues[FINALE_DURATION] = value;    
   }
-
+  if (id == 98){
+    Serial.print("Wifi strengt: ");
+    Serial.println(getWifiStrength(10));
+    DynamicJsonBuffer  wifi_jsonBuffer(200);
+    JsonObject& root = wifi_jsonBuffer.createObject();
+    root["sender"] = hostname;
+    root["method"] = "info";
+    root["signal strength"] = getWifiStrength(10);
+    root["trigger"] = "request";
+    char wifi_char[250];
+    root.prettyPrintTo(wifi_char, sizeof(wifi_char));
+    pubMsg(wifi_char);     
+    }
 }
 // void inputStateMachine()
 // {
@@ -503,31 +546,6 @@ void resetPuzzle(){
 
 
 
-// the ethernet function
-char localIP[16];
-char macAddress[18];
-int getWifiStrength(int points){
-    long rssi = 0;
-    long averageRSSI = 0; 
-    for (int i=0;i < points;i++){
-        rssi += WiFi.RSSI();
-        delay(20);
-    }
-    averageRSSI = rssi/points;
-    return averageRSSI;
-}
-void initWiFi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi ..");
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print('.');
-    delay(1000);
-  }
-  Serial.println(WiFi.localIP());
-  Serial.print("Wifi strength: ");
-  Serial.println(getWifiStrength(10));
-}
 
 
 
@@ -541,25 +559,32 @@ void reconnect() {
   sprintf(lastWillMsg, "{\"sender\":\"%s\",\"method\":\"info\",\"state\":\"offline\",\"trigger\":\"disconnect\"}", hostname);
   // Loop until we're reconnected
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection to ");
-    Serial.print(server);
-    Serial.print("...");
-    // Attempt to connect
-    if (client.connect(hostname, "", "", puzzle_topic, 0, true, lastWillMsg)) {
-      Serial.println("connected");
-      // Once connected, publish an announcement...
-      pubMsg_kb("info", "connected", "true", "trigger", "startup");
-      // ... and resubscribe
-      client.subscribe(gen_topic);
-      client.subscribe(puzzle_topic);
-      client.subscribe(module_topic);
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(5000);
+    if ((WiFi.status() != WL_CONNECTED))
+    {
+        initWiFi();
     }
+    else if ((WiFi.status() == WL_CONNECTED))
+    {
+        Serial.print("Attempting MQTT connection to ");
+        Serial.print(server);
+        Serial.print("...");
+        // Attempt to connect
+        if (client.connect(hostname, "", "", puzzle_topic, 0, true, lastWillMsg)) {
+        Serial.println("connected");
+        // Once connected, publish an announcement...
+        pubMsg_kb("info", "connected", "true", "trigger", "startup");
+        // ... and resubscribe
+        client.subscribe(gen_topic);
+        client.subscribe(puzzle_topic);
+        client.subscribe(module_topic);
+        } else {
+        Serial.print("failed, rc=");
+        Serial.print(client.state());
+        Serial.println(" try again in 5 seconds");
+        // Wait 5 seconds before retrying
+        delay(5000);
+        }
+    }    
   }
 }
 
