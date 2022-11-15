@@ -1,12 +1,9 @@
 // ONGOING DEV: - making two Wire busses -> https://randomnerdtutorials.com/esp32-i2c-communication-arduino-ide/
 #include <Arduino.h>
-#include <WiFi.h>
-#include <ArduinoJson.h>
+#include <SPI.h>
+#include <ETH.h>
 #include <PubSubClient.h>
 #include <Sherlocked.h>
-#include <NeoPixelBus.h>
-#include <Ramp.h> 
-
 
 
 // Firmware version
@@ -15,102 +12,87 @@ char firmware_version[] = "0.8";                                // we have a cle
 // SETTINGS
 
 // mqtt/ace settings
+const char* ssid = "Wireless Funtime Palace";
+const char* password = "radiorijnmond";
 char hostname[] ="controller";                                  // the hostname for board  <= REPLACE
 const char gen_topic[] = "alch";  
 const char puzzle_topic[] = "alch/orb"; 
-const char module_topic[] = "alch/orb/controller";              // the module name of the board <= REPLACE
-const char* ssid = "Wireless Funtime Palace";
-const char* password = "radiorijnmond";
+const char module_topic[] = "alch/orb/controller";      // the module name of the board <= REPLACE
 IPAddress server(192, 168, 178, 213);                           // ip address of the mqtt/ace server <= REPLACE
 
 
 // controller settings
-// settings
-u_int8_t flicker_time = 12;   // off time in between the 3 individual white leds in a smd5050
-u_int8_t max_intensity = 50;    // max of 255
-u_int8_t min_intensity = 5;     
-u_int32_t duration = 3000;       // time it takes to go back and forth between max and min intensity
 
+// motor controllers
+const int motor_controller_on_off_delay = 5000;  // delay between the HIGH and LOW for the motor controllers in microseconds
 
-// amount of pixels we have on the strip
-const uint16_t PixelCount = 81; // 6 deksel + 5x15 = 81
-
+// input debounce time
+const int debounce_time = 10;
 
 
 // INPUTS and OUTPUTS
 // These needs to correspond to the document at https://docs.google.com/document/d/1GiCjMT_ph-NuIOsD4InIvT-H3MmUkSkzBZRMM1L5IsI/edit#heading=h.wqfd6v7o79qu
 
 // how many do we have and do they need to start at a certain id? 
-#define NUM_OUTPUTS 11           // amount of outputs
+#define NUM_OUTPUTS 9           // amount of outputs
 #define START_OUTPUT 1          // the start number of the output
-#define NUM_INPUTS 0           // amount of inputs
-#define START_INPUT 0          // the start number of the input
+#define NUM_INPUTS 10           // amount of inputs
+#define START_INPUT 17          // the start number of the input
 
 // pin assignment
 // IN
-// - 
+#define motor_control_A_top_pin 14              // ESP32 interrupt input (nog te programmeren)
 // OUT
-#define DotClockPin 12              
-#define DotDataPin 13            
-#define DotChipSelectPin -1   
+#define motor_controller_arm_A_bottom_pin 2     //SX1509
 
 
 // lets put these pins in an array
-// int _inputsPins[1] = {
-//   motor_control_A_top_pin,
-// };
+int _inputsPins[1] = {
+  motor_control_A_top_pin,
+};
 // lets calculate the size of this array so we can loop through it later on
-// int _inputsPinsArraySize = sizeof(_inputsPins)/sizeof(int);
+int _inputsPinsArraySize = sizeof(_inputsPins)/sizeof(int);
 
 // naming the IDs and values
 // these names are now numbered and can be used when calling an array numbers. Instead of inIDs[2] now inIDs[arm_A_controller_top]
-// enum inputs{
-//   TOP_CONTROLLER_ARM_A,
-// };
+enum inputs{
+  TOP_CONTROLLER_ARM_A,
+};
 enum outputs{
-    BREATH_MODE_ENABLE,
-    BREATH_FLICKER_TIME,
-    BREATH_MAX_INTENSITY,
-    BREATH_MIN_INTENSITY,
-    BREATH_DURATION,
-    FINALE_MODE_ENABLE,
-    FINALE_FLICKER_TIME,
-    FINALE_MAX_INTENSITY,
-    FINALE_MIN_INTENSITY,
-    FINALE_DURATION    
+  TOP_CONTROLLER_ARMS,
 };
 
 // a struct to create more overview for the inputs
-// struct input {
-//     uint8_t id;
-//     uint8_t value;
-//     uint8_t pin;
-//     uint32_t current_debounce;
-//     uint32_t last;
-//     uint32_t debounce;
-// };
+struct input {
+    uint8_t id;
+    uint8_t value;
+    uint8_t pin;
+    uint32_t current_debounce;
+    uint32_t last;
+    uint32_t debounce;
+};
 
 // lets create those struct based on the amount of inputs we have
-// input _input[NUM_INPUTS];
+input _input[NUM_INPUTS];
 
 // let's initiate those inputs and give them id's and connect them to the physival pins
-// void initInputs()
-// {
-//     Serial.println("Setup commencing");
-//     for (int i = 0; i < NUM_INPUTS; i++)
-//     {
-//         Serial.printf("Setup %i \n", i);
-//         _input[i].id = i+START_INPUT;
-//         if (i < _inputsPinsArraySize)
-//         {
-//             _input[i].debounce = 10;
-//             _input[i].last = millis();
-//             _input[i].pin = _inputsPins[i];
-//             Serial.printf("input pin found! %i \n", _input[i].pin);
-//             pinMode(_input[i].pin, INPUT_PULLUP);
-//         } 
-//     }
-// }
+void initInputs()
+{
+    Serial.println("Setup commencing");
+    for (int i = 0; i < NUM_INPUTS; i++)
+    {
+        Serial.printf("Setup %i \n", i);
+        _input[i].id = i+START_INPUT;
+        if (i < _inputsPinsArraySize)
+        {
+            _input[i].debounce = 10;
+            _input[i].last = millis();
+            _input[i].pin = _inputsPins[i];
+            Serial.printf("input pin found! %i \n", _input[i].pin);
+            pinMode(_input[i].pin, INPUT_PULLUP);
+        } 
+    }
+}
 
 
 // and here we create the id and the value arrays which are callable by e.g. outIDs[led_hole] (which is 15)
@@ -135,24 +117,7 @@ void setOutputsNum()
     }
   }
 }
-// void setInputsNum()
-// {
-//   Serial.print("Inputs: {");
-//   for(int i = 0; i < NUM_INPUTS; i++)
-//   {
-//     inIDs[i] = i+START_INPUT;
-//     Serial.print(i+START_INPUT);
-//     Serial.printf("[%i]", inValues[i]);
-//     if (i < NUM_INPUTS-1)
-//     {
-//       Serial.print(", ");
-//     }
-//     if (i >= NUM_INPUTS-1)
-//     {
-//       Serial.println("}");
-//     }    
-//   }
-// }
+
 
 // INPUT OUTPUT END ---
 //  that's it, now we can call for example _input[CONTROLLER_ARM_A_TARGET_TOP].pin or _input[CONTROLLER_ARM_A_TARGET_TOP].value
@@ -161,34 +126,23 @@ void setOutputsNum()
 // SETUP LIBS
 WiFiClient espClient;
 PubSubClient client(espClient);
-// Hardware SPI on 20MHz. Most efficient and speedy method available. 
-NeoPixelBus<DotStarBgrFeature, DotStarSpi20MhzMethod> strip(PixelCount);
 
-// define the ramps
-ramp white_1_ramp;
-ramp white_2_ramp;
-ramp white_3_ramp;
-
-
+void initWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi ..");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print('.');
+    delay(1000);
+  }
+  Serial.println(WiFi.localIP());
+}
 
 // variables 
-static bool eth_connected = false;
 unsigned long previousMicros = 0;
 unsigned long currentMicros;
 unsigned long currentDebounceMillis;
 unsigned long last_debounce_time = 0;
-u_int8_t flicker_time_2 = flicker_time * 0.33;
-u_int8_t flicker_time_3 = flicker_time * 0.8;
-
-u_int8_t breathing_flicker_time = 12;   // off time in between the 3 individual white leds in a smd5050
-u_int8_t breathing_max_intensity = 50;    // max of 255
-u_int8_t breathing_min_intensity = 5;     
-u_int32_t breathing_duration = 3000;       // time it takes to go back and forth between max and min intensity
-u_int8_t finale_flicker_time = 5;   // off time in between the 3 individual white leds in a smd5050
-u_int8_t finale_max_intensity = 255;    // max of 255
-u_int8_t finale_min_intensity = 25;     
-u_int32_t finale_duration = 30000;       // time it takes to go back and forth between max and min intensity
-
 
 // the publish function for ACE/mqtt
 void pubMsg(char msg[])
@@ -256,107 +210,72 @@ void setOutputWithMessage(int outID, int value, const char* request)
     root.prettyPrintTo(full_char, sizeof(full_char));
     pubMsg(full_char);      
 }
-// void blockMessage(uint8_t requested_id, uint8_t blocking_id)
-// {
-//     DynamicJsonBuffer  jsonBuffer(200);
-//     JsonObject& root = jsonBuffer.createObject();
-//     root["sender"] = hostname;
-//     root["method"] = "info";
-//     JsonArray& outputs = root.createNestedArray("outputs");
-//     JsonObject& outid_val = outputs.createNestedObject();
-//     outid_val["id"] = outIDs[requested_id];
-//     outid_val["value"] = outValues[requested_id];
-//     JsonArray& inputs = root.createNestedArray("inputs");
-//     JsonObject& inputsid_val = inputs.createNestedObject();
-//     inputsid_val["id"] = _input[blocking_id].id;
-//     inputsid_val["value"] = _input[blocking_id].value;
-//     root["trigger"] = "block";
-//     char full_char[250];
-//     root.prettyPrintTo(full_char, sizeof(full_char));
-//     pubMsg(full_char);  
-// };
+void blockMessage(uint8_t requested_id, uint8_t blocking_id)
+{
+    DynamicJsonBuffer  jsonBuffer(200);
+    JsonObject& root = jsonBuffer.createObject();
+    root["sender"] = hostname;
+    root["method"] = "info";
+    JsonArray& outputs = root.createNestedArray("outputs");
+    JsonObject& outid_val = outputs.createNestedObject();
+    outid_val["id"] = outIDs[requested_id];
+    outid_val["value"] = outValues[requested_id];
+    JsonArray& inputs = root.createNestedArray("inputs");
+    JsonObject& inputsid_val = inputs.createNestedObject();
+    inputsid_val["id"] = _input[blocking_id].id;
+    inputsid_val["value"] = _input[blocking_id].value;
+    root["trigger"] = "block";
+    char full_char[250];
+    root.prettyPrintTo(full_char, sizeof(full_char));
+    pubMsg(full_char);  
+};
 
 // OUTPUT FUNCTIONS
 // the motor functions
-void breathing_mode_enable(int start){
+void motor_controller_arms_top_position(int start){
   if (start == 1 )
   {
-    flicker_time = breathing_flicker_time;   // off time in between the 3 individual white leds in a smd5050
-
-    white_1_ramp.setGrain(1);                         // set grain to 1 ms
-    white_1_ramp.go(breathing_min_intensity);                               // make sure to start at 0
-    white_1_ramp.go(breathing_max_intensity, breathing_duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down
-
-    white_2_ramp.setGrain(1);                         // set grain to 1 ms
-    white_2_ramp.go(breathing_min_intensity);                               // make sure to start at 0
-    white_2_ramp.go(breathing_max_intensity, breathing_duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down
-
-    white_3_ramp.setGrain(1);                         // set grain to 1 ms
-    white_3_ramp.go(breathing_min_intensity);                               // make sure to start at 0
-    white_3_ramp.go(breathing_max_intensity, breathing_duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down       
-
-
-
-    outValues[BREATH_MODE_ENABLE] = 1;
+    digitalWrite(motor_controller_arm_A_bottom_pin, HIGH);
+    outValues[TOP_CONTROLLER_ARMS] = 1;
   } 
+  else if (start == 1)
+  {
+    // blockMessage(TOP_CONTROLLER_ARMS, MOVING_CONTROLLER_RINGS);
+  } 
+  else if (start == 1)
+  {
+   //  blockMessage(TOP_CONTROLLER_ARMS, MOVING_CONTROLLER_RINGS); 
+  }   
   else if (start == 0)
   {
-    outValues[BREATH_MODE_ENABLE] = 0;
-    white_1_ramp.pause();
-    white_2_ramp.pause();
-    white_3_ramp.pause();
+    digitalWrite(motor_controller_arm_A_bottom_pin, LOW);
+    outValues[TOP_CONTROLLER_ARMS] = 0;
   }
 }
 
-void finale_mode_enable(int start){
-  if (start == 1 )
-  {
-    flicker_time = finale_flicker_time;      // off time in between the 3 individual white leds in a smd5050
 
-    white_1_ramp.setGrain(1);                         // set grain to 1 ms
-    white_1_ramp.go(finale_min_intensity);                               // make sure to start at 0
-    white_1_ramp.go(finale_max_intensity, finale_duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down
-
-    white_2_ramp.setGrain(1);                         // set grain to 1 ms
-    white_2_ramp.go(finale_min_intensity);                               // make sure to start at 0
-    white_2_ramp.go(finale_max_intensity, finale_duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down
-
-    white_3_ramp.setGrain(1);                         // set grain to 1 ms
-    white_3_ramp.go(finale_min_intensity);                               // make sure to start at 0
-    white_3_ramp.go(finale_max_intensity, finale_duration, SINUSOIDAL_INOUT, BACKANDFORTH);    // go to value 30 in 1000ms in a linear line and looping up and down       
-
-    outValues[FINALE_MODE_ENABLE] = 1;
-  } 
-  else if (start == 0)
-  {
-    outValues[FINALE_MODE_ENABLE] = 0;
-    white_1_ramp.pause();
-    white_2_ramp.pause();
-    white_3_ramp.pause();
-  }
-}
 // INPUT FUNCTIONS
 // function to read, set and send the inputs on the controller
-// void digitalReadSetValue(uint8_t name_id)
-// {
-//     _input[name_id].current_debounce = millis();
-//     if (_input[name_id].current_debounce - _input[name_id].last > _input[name_id].debounce)
-//     {
-//         if (!digitalRead(_input[name_id].pin) && _input[name_id].value == 0)
-//         {
-//             _input[name_id].value = 1;
-//             Sherlocked.sendInput(name_id, _input[name_id].value, T_INPUT);
-//             Serial.printf("input %i: 1\n", _input[name_id].pin);
-//         }
-//         else if (digitalRead(_input[name_id].pin) && _input[name_id].value == 1)
-//         {
-//             _input[name_id].value = 0;
-//             Sherlocked.sendInput(name_id, _input[name_id].value, T_INPUT);
-//             Serial.printf("input %i: 0\n", _input[name_id].pin);
-//         }
-//         _input[name_id].last = _input[name_id].current_debounce;  
-//     }
-// }
+void digitalReadSetValue(uint8_t name_id)
+{
+    _input[name_id].current_debounce = millis();
+    if (_input[name_id].current_debounce - _input[name_id].last > _input[name_id].debounce)
+    {
+        if (!digitalRead(_input[name_id].pin) && _input[name_id].value == 0)
+        {
+            _input[name_id].value = 1;
+            Sherlocked.sendInput(name_id, _input[name_id].value, T_INPUT);
+            Serial.printf("input %i: 1\n", _input[name_id].pin);
+        }
+        else if (digitalRead(_input[name_id].pin) && _input[name_id].value == 1)
+        {
+            _input[name_id].value = 0;
+            Sherlocked.sendInput(name_id, _input[name_id].value, T_INPUT);
+            Serial.printf("input %i: 0\n", _input[name_id].pin);
+        }
+        _input[name_id].last = _input[name_id].current_debounce;  
+    }
+}
 
 
 
@@ -365,52 +284,15 @@ void outputStateMachine(int id, int value)
 {
   id = id -1; 
   dbf("outputStateMachine received id: %i with value: %i\n", id, value);
-  if (id == BREATH_MODE_ENABLE ){
-    Serial.println("BREATH_MODE_ENABLE");
-    breathing_mode_enable(value);    
+  if (id == TOP_CONTROLLER_ARMS ){
+    Serial.println("TOP_CONTROLLER_ARMS");
+    motor_controller_arms_top_position(value);    
   }
-  if (id == BREATH_FLICKER_TIME ){
-    Serial.println("BREATH_FLICKER_TIME");
-    outValues[BREATH_FLICKER_TIME] = value;    
-  }
-  if (id == BREATH_MAX_INTENSITY ){
-    Serial.println("BREATH_MAX_INTENSITY");
-    outValues[BREATH_MAX_INTENSITY] = value;    
-  }
-  if (id == BREATH_MIN_INTENSITY ){
-    Serial.println("BREATH_MIN_INTENSITY");
-    outValues[BREATH_MIN_INTENSITY] = value;    
-  }
-  if (id == BREATH_DURATION ){
-    Serial.println("BREATH_DURATION");
-    outValues[BREATH_DURATION] = value;    
-  }
-  if (id == FINALE_MODE_ENABLE ){
-    Serial.println("FINALE_MODE_ENABLE");
-    finale_mode_enable(value);    
-  }
-  if (id == FINALE_FLICKER_TIME ){
-    Serial.println("FINALE_FLICKER_TIME");
-    outValues[FINALE_FLICKER_TIME] = value;    
-  }
-  if (id == FINALE_MAX_INTENSITY ){
-    Serial.println("FINALE_MAX_INTENSITY");
-    outValues[FINALE_MAX_INTENSITY] = value;    
-  }
-  if (id == FINALE_MIN_INTENSITY ){
-    Serial.println("FINALE_MIN_INTENSITY");
-    outValues[FINALE_MIN_INTENSITY] = value;    
-  }
-  if (id == FINALE_DURATION ){
-    Serial.println("FINALE_DURATION");
-    outValues[FINALE_DURATION] = value;    
-  }
-
 }
-// void inputStateMachine()
-// {
-//   digitalReadSetValue(TOP_CONTROLLER_ARM_A);   
-// }
+void inputStateMachine()
+{
+  digitalReadSetValue(TOP_CONTROLLER_ARM_A);   
+}
 
 // functions to set the in and outputs at the right starting position
 
@@ -426,30 +308,30 @@ char * getAllOutputs()
   char * msg = Sherlocked.sendOutputs(NUM_OUTPUTS, outIDs, outValues, T_REQUEST);
   return(msg);
 }
-// void sendAllInputs()
-// {
-//   int allids[NUM_INPUTS]; // actual ids
-//   int allvals[NUM_INPUTS]; // actual values
-//   for (int i = 0; i < NUM_INPUTS; i++)
-//   {
-//       allids[i]  = _input[i].id;
-//       allvals[i] = _input[i].value;
-//   }
-//   char * msg = Sherlocked.sendInputs(NUM_INPUTS, allids, allvals, T_REQUEST);
-//   pubMsg(msg);
-// }
-// char * getAllInputs()
-// {
-//   int allids[NUM_INPUTS]; // actual ids
-//   int allvals[NUM_INPUTS]; // actual values
-//   for (int i = 0; i < NUM_INPUTS; i++)
-//   {
-//       allids[i]  = _input[i].id;
-//       allvals[i] = _input[i].value;
-//   }
-//   char * msg = Sherlocked.sendInputs(NUM_INPUTS, allids, allvals, T_REQUEST);
-//   return(msg);
-// }
+void sendAllInputs()
+{
+  int allids[NUM_INPUTS]; // actual ids
+  int allvals[NUM_INPUTS]; // actual values
+  for (int i = 0; i < NUM_INPUTS; i++)
+  {
+      allids[i]  = _input[i].id;
+      allvals[i] = _input[i].value;
+  }
+  char * msg = Sherlocked.sendInputs(NUM_INPUTS, allids, allvals, T_REQUEST);
+  pubMsg(msg);
+}
+char * getAllInputs()
+{
+  int allids[NUM_INPUTS]; // actual ids
+  int allvals[NUM_INPUTS]; // actual values
+  for (int i = 0; i < NUM_INPUTS; i++)
+  {
+      allids[i]  = _input[i].id;
+      allvals[i] = _input[i].value;
+  }
+  char * msg = Sherlocked.sendInputs(NUM_INPUTS, allids, allvals, T_REQUEST);
+  return(msg);
+}
 // helper functions for getting the right value for the right id
 // int getOutputValueByID(int id)
 // {
@@ -482,52 +364,22 @@ int getOutputArrayIndexByID(int id)
   }
   return UNDEFINED;
 }
-// int getInputArrayIndexByID(int id)
-// {
-//   for (int i = 0; i < NUM_INPUTS; i++)
-//   {
-//     if (_input[i].id == id)
-//     {
-//       return i;
-//     }
-//   }
-//   return UNDEFINED;
-// }
+int getInputArrayIndexByID(int id)
+{
+  for (int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (_input[i].id == id)
+    {
+      return i;
+    }
+  }
+  return UNDEFINED;
+}
 
 // puzzle controller specific functions
 void resetPuzzle(){
-    outValues[BREATH_MODE_ENABLE] = 0;
-    outValues[FINALE_MODE_ENABLE] = 0;
-    // pubMsg_kb("info", "state", "reset");
+  pubMsg_kb("info", "state", "reset");
 };
-
-
-
-// the ethernet function
-char localIP[16];
-char macAddress[18];
-int getWifiStrength(int points){
-    long rssi = 0;
-    long averageRSSI = 0; 
-    for (int i=0;i < points;i++){
-        rssi += WiFi.RSSI();
-        delay(20);
-    }
-    averageRSSI = rssi/points;
-    return averageRSSI;
-}
-void initWiFi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi ..");
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print('.');
-    delay(1000);
-  }
-  Serial.println(WiFi.localIP());
-  Serial.print("Wifi strength: ");
-  Serial.println(getWifiStrength(10));
-}
 
 
 
@@ -615,16 +467,29 @@ void inputCallback(int meth, int numInputs, int ids[], int vals[], int trigger)
   dbf("inputCallback() method : %s, numInputs : %i, trigger : %s\n", Sherlocked.getMethodStr(meth), numInputs, Sherlocked.getTriggerStr(trigger) );
   if (meth == M_GET)
   {
-    DynamicJsonBuffer  inputcalbackBuffer(200);
-    inputcalbackBuffer.clear();
-    JsonObject& root = inputcalbackBuffer.createObject();
-    root["sender"] = hostname;
-    JsonArray& outputs = root.createNestedArray("inputs");
-    root["method"] 	= Sherlocked.getMethodStr(M_INFO);
-    root["trigger"] = Sherlocked.getTriggerStr(T_REQUEST);
-    char inputChar[400];
-    root.prettyPrintTo(inputChar, sizeof(inputChar));
-
+    // The get method only has ids; fill in the values with the values that correspond to the input ID
+    if (numInputs > 0)
+    {
+      int numOnBoard = 0;   // count the actual number on this board
+      int aids[numInputs]; // actual ids
+      int avals[numInputs]; // actual values
+      for (int i = 0; i < numInputs; i++)
+      {
+        int idx = getInputArrayIndexByID(ids[i]); // find the array index of the output id on this board
+        if (idx != UNDEFINED) // if found store it
+        {
+          aids[numOnBoard]  = _input[idx].id;
+          avals[numOnBoard] = _input[idx].value;
+          numOnBoard++;
+        }
+      }
+      char * msg = Sherlocked.sendInputs(numOnBoard, aids, avals, T_REQUEST);
+      pubMsg(msg); 
+    }
+    else  // If no input id's are provided, feed them all back
+    {
+      sendAllInputs();
+    }
   }
   else if (meth == M_INFO) // listen to other input info
   {
@@ -753,7 +618,7 @@ uint16_t _otaTimeout = 15000;
 int contentLength = 0;
 bool isValidContentType = false;
 String host = server.toString();
-int port = 8888; // Non https. For HTTPS 443.  HTTPS doesn't work yet <= REPLACE for 80
+int port = 80; // Non https. For HTTPS 443.  HTTPS doesn't work yet
 String bin; // bin file name with a slash in front.
 
 void setBinVers(const char binfile[])
@@ -827,7 +692,7 @@ void execOTA()
       // if the the line is empty,
       // this is end of headers
       // break the while and feed the
-      // remaining `espClient` to the
+      // remaining `ethclient` to the
       // Update.writeStream();
       if (!line.length()) {
         //headers ended
@@ -979,8 +844,8 @@ void commandCallback(int meth, int cmd, const char value[], int triggerID)
     case INFO_SYSTEM:
       dbf("system info requested\n");
       char system[200];
-      sprintf(system, "{ \"ip\": \"%s\", \"MAC\": \"%s\", \"firmware\": \"%s\" }", localIP, macAddress, firmware_version);
-      pubMsg_kb("info", "info", system, "trigger", "request");
+      // sprintf(system, "{ \"ip\": \"%s\", \"MAC\": \"%s\", \"firmware\": \"%s\" }", localIP, macAddress, firmware_version);
+      // pubMsg_kb("info", "info", system, "trigger", "request");
         // Expects to receive back system info such as local IP ('ip'), Mac address ('mac') and Firmware Version ('fw')
       break;
 
@@ -997,14 +862,13 @@ void commandCallback(int meth, int cmd, const char value[], int triggerID)
       root["sender"] = hostname;
       root["state"] = getState();
       root["connected"] = client.connected();
-      // geen inputs dus geen array terug
-    //   JsonArray& inputs = root.createNestedArray("inputs");
-    //   for (int i = 0; i < NUM_INPUTS; i++)
-    //   {
-    //     JsonObject& ind_val = inputs.createNestedObject();
-    //     ind_val["id"] = _input[i].id;
-    //     ind_val["value"] = _input[i].value;
-    //   }
+      JsonArray& inputs = root.createNestedArray("inputs");
+      for (int i = 0; i < NUM_INPUTS; i++)
+      {
+        JsonObject& ind_val = inputs.createNestedObject();
+        ind_val["id"] = _input[i].id;
+        ind_val["value"] = _input[i].value;
+      }
       JsonArray& outputs = root.createNestedArray("outputs");
       for (int i = 0; i < NUM_OUTPUTS; i++)
       {
@@ -1022,43 +886,35 @@ void commandCallback(int meth, int cmd, const char value[], int triggerID)
 
 
 void setup() {
-    Serial.begin(115200);
-    Serial.println("Conductive MQTT Sensor");
+  Serial.begin(115200);
+  Serial.println("Conductive MQTT Sensor");
 
-    //   initInputs();
-    setOutputsNum();
+  initInputs();
+  setOutputsNum();
 
-    // begin the strip communication with the desired pins, since it's an ESP32 we can use all we want. 
-    strip.Begin(DotClockPin, DotDataPin, DotDataPin, DotChipSelectPin);
+  // init wifi
+  initWiFi();
 
-    // this resets all the neopixels to an off state
-    strip.ClearTo(0);
-    strip.Show();
+  // start the mqtt client
+  client.setServer(server, 1883);
+  client.setCallback(callback);
+  client.setBufferSize(1200);
 
-    // Allow the hardware to sort itself out
-    delay(3500);
+  // Allow the hardware to sort itself out
+  delay(1500);
 
-    // start the ethernet client
-    initWiFi();
-
-    // start the mqtt client
-    client.setServer(server, 1883);
-    client.setCallback(callback);
-    client.setBufferSize(1200);
-
-
-    /* Set the name for this controller, this should be unqiue within */
-    Sherlocked.setName(hostname);
-    /* Set callback functions for the various messages that can be received by the Sherlocked ACE system */    
-    /* Puzzle State Changes are handled here */
-    Sherlocked.setStateCallback(stateCallback);
-    /* General Command and Info Messages */
-    Sherlocked.setCommandCallback(commandCallback);
-    /* Inputs and Outputs */
-    Sherlocked.setInputCallback(inputCallback);
-    Sherlocked.setOutputCallback(outputCallback);
-    /* Catch-all callback for json messages that were not handled by other callbacks */
-    Sherlocked.setJSONCallback(jsonCallback);
+  /* Set the name for this controller, this should be unqiue within */
+  Sherlocked.setName(hostname);
+  /* Set callback functions for the various messages that can be received by the Sherlocked ACE system */    
+  /* Puzzle State Changes are handled here */
+  Sherlocked.setStateCallback(stateCallback);
+  /* General Command and Info Messages */
+  Sherlocked.setCommandCallback(commandCallback);
+  /* Inputs and Outputs */
+  Sherlocked.setInputCallback(inputCallback);
+  Sherlocked.setOutputCallback(outputCallback);
+  /* Catch-all callback for json messages that were not handled by other callbacks */
+  Sherlocked.setJSONCallback(jsonCallback);
 
 }
 
@@ -1068,56 +924,15 @@ void setup() {
 
 void loop() {
 
-    // if the mqtt client does not connect, try it again later
-    if (!client.connected()) {
-        reconnect();
-    }
-    client.loop();  
+  // if the mqtt client does not connect, try it again later
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();  
 
-    // setup for the non blocking functions
-    currentMicros = micros();
+  // setup for the non blocking functions
+  currentMicros = micros();
 
-    //   inputStateMachine();
-
-    if (outValues[BREATH_MODE_ENABLE] || outValues[FINALE_MODE_ENABLE])
-    {
-        // if (currentMicros - previousMicros >= flicker_time) 
-        // {
-            previousMicros = currentMicros;   
-            int white_1_i = white_1_ramp.update();
-            // Serial.print("white_1_i: ");
-            // Serial.println(white_1_i);
-            strip.ClearTo(RgbColor(0, white_1_i, 0));
-            strip.Show();
-        // }
-            delay(flicker_time);
-        // if (currentMicros - previousMicros >= flicker_time_2) 
-        // {
-            previousMicros = currentMicros;   
-            int white_2_i = white_2_ramp.update();
-            // Serial.print("white_2_i: ");
-            // Serial.println(white_2_i);
-            strip.ClearTo(RgbColor(white_2_i, 0, 0));
-            strip.Show();
-        // }
-            delay(flicker_time);
-        // if (currentMicros - previousMicros >= flicker_time_3) 
-        // {
-            previousMicros = currentMicros;   
-            int white_3_i = white_3_ramp.update();
-            // Serial.print("white_3_i: ");
-            // Serial.println(white_3_i);
-            strip.ClearTo(RgbColor(0, 0, white_3_i));
-            strip.Show();
-        // }
-            delay(flicker_time);
-    }
-    else if (!outValues[BREATH_MODE_ENABLE] && !outValues[FINALE_MODE_ENABLE])
-    {
-        strip.ClearTo(0);
-        strip.Show();
-    }
-    
-    
+  inputStateMachine();
 
 }

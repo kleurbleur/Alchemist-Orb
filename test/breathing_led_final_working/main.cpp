@@ -1,19 +1,20 @@
 #include <Arduino.h>
 #include <NeoPixelBus.h>
 #include <Ramp.h> 
+#include <WiFi.h>
 
 // settings
-const int max_intensity = 10;    // max of 255
-const int min_intensity = 1;     
-const int duration = 1000;       // time it takes to go back and forth between max and min intensity
-const int inbetween_time = 30;   // off time in between the 3 individual white leds in a smd5050
+const int max_intensity = 50;    // max of 255
+const int min_intensity = 5;     
+const int duration = 3000;       // time it takes to go back and forth between max and min intensity
+const int inbetween_time = 12;   // off time in between the 3 individual white leds in a smd5050
 
 
 // amount of pixels we have on the strip
-const uint16_t PixelCount = 144; 
+const uint16_t PixelCount = 81; // 6 deksel + 5x15 = 81
 
 // make sure to set this to the correct pins
-const uint8_t DotClockPin = 14;
+const uint8_t DotClockPin = 12;
 const uint8_t DotDataPin = 13;  
 const int8_t DotChipSelectPin = -1;
 
