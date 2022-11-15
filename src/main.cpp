@@ -10,7 +10,7 @@
 
 
 // Firmware version
-char firmware_version[] = "0.8";                                // we have a clean boilerplate!
+char firmware_version[] = "0.9";                                // more robust wifi reconnect and signal strength indicator
 
 // SETTINGS
 
@@ -217,7 +217,10 @@ void initWiFi() {
         Serial.print('.');
         delay(1000);
     }
-    Serial.println(WiFi.localIP());
+    WiFi.localIP().toString().toCharArray(localIP, 16);
+    strncpy( macAddress, WiFi.macAddress().c_str(), sizeof(macAddress) );
+    Serial.println(localIP);
+    Serial.println(macAddress);
     Serial.print("Wifi strength: ");
     Serial.println(getWifiStrength(10));
 }
@@ -1004,7 +1007,7 @@ void commandCallback(int meth, int cmd, const char value[], int triggerID)
     case INFO_SYSTEM:
       dbf("system info requested\n");
       char system[200];
-      sprintf(system, "{ \"ip\": \"%s\", \"MAC\": \"%s\", \"firmware\": \"%s\" }", localIP, macAddress, firmware_version);
+      sprintf(system, "{ \"ip\": \"%s\", \"MAC\": \"%s\", \"RSSI\": \"%i\",  \"firmware\": \"%s\" }", localIP, macAddress, getWifiStrength(10), firmware_version);
       pubMsg_kb("info", "info", system, "trigger", "request");
         // Expects to receive back system info such as local IP ('ip'), Mac address ('mac') and Firmware Version ('fw')
       break;
