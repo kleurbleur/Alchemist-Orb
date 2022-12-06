@@ -41,7 +41,7 @@ const uint16_t PixelCount = 81; // 6 deksel + 5x15 = 81
 // These needs to correspond to the document at https://docs.google.com/document/d/1GiCjMT_ph-NuIOsD4InIvT-H3MmUkSkzBZRMM1L5IsI/edit#heading=h.wqfd6v7o79qu
 
 // how many do we have and do they need to start at a certain id? 
-#define NUM_OUTPUTS 11           // amount of outputs
+#define NUM_OUTPUTS 10           // amount of outputs
 #define START_OUTPUT 1          // the start number of the output
 #define NUM_INPUTS 0           // amount of inputs
 #define START_INPUT 0          // the start number of the input
@@ -1006,10 +1006,18 @@ void commandCallback(int meth, int cmd, const char value[], int triggerID)
 
     case INFO_SYSTEM:
       dbf("system info requested\n");
-      char system[200];
-      sprintf(system, "{ \"ip\": \"%s\", \"MAC\": \"%s\", \"RSSI\": \"%i\",  \"firmware\": \"%s\" }", localIP, macAddress, getWifiStrength(10), firmware_version);
-      pubMsg_kb("info", "info", system, "trigger", "request");
-        // Expects to receive back system info such as local IP ('ip'), Mac address ('mac') and Firmware Version ('fw')
+      DynamicJsonBuffer  jsonBuffer(400);
+      JsonObject& root = jsonBuffer.createObject();
+      root["sender"] = hostname;
+      root["method"] = M_INFO;
+      root["ip"] = localIP;
+      root["mac"] = macAddress;
+      root["rssi"] = getWifiStrength(10);
+      root["version"] = firmware_version;
+      root["trigger"] = T_REQUEST;
+      char full_char[1200];
+      root.prettyPrintTo(full_char, sizeof(full_char));
+      pubMsg(full_char);
       break;
 
     case INFO_STATE:
