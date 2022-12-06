@@ -985,54 +985,63 @@ void commandCallback(int meth, int cmd, const char value[], int triggerID)
   switch (cmd)
   {
     case CMD_RESET:
+    {
       dbf("Received Puzzle RESET from Sherlocked\n");
       resetPuzzle();
       break;
-
+    }
     case CMD_REBOOT:
+    {
       dbf("Received Reboot from Sherlocked\n");
       ESP.restart();
       break;
-
+    }
     case CMD_SYNC:
+    {
       dbf("Sync Command not implemented for this board\n");  // en is ook niet nodig, alleen voor files belangrijk
       break;
-
+    }
     case CMD_OTA:
+    {
       dbf("OTA Firmware update command\n"); // deze gaan we wel doen, Serge stuurt me voorbeeld code
       // value contains the file URL for the OTA command
       doOTA(value);
       break;
-
+    }
     case INFO_SYSTEM:
+    {
       dbf("system info requested\n");
-      DynamicJsonBuffer  jsonBuffer(400);
-      JsonObject& root = jsonBuffer.createObject();
-      root["sender"] = hostname;
-      root["method"] = M_INFO;
-      root["ip"] = localIP;
-      root["mac"] = macAddress;
-      root["rssi"] = getWifiStrength(10);
-      root["version"] = firmware_version;
-      root["trigger"] = T_REQUEST;
-      char full_char[1200];
-      root.prettyPrintTo(full_char, sizeof(full_char));
-      pubMsg(full_char);
+      DynamicJsonBuffer  jsonBufferSystem(400);
+      JsonObject& rootSystem = jsonBufferSystem.createObject();
+      rootSystem["sender"] = hostname;
+      rootSystem["method"] = M_INFO;
+      rootSystem["ip"] = localIP;
+      rootSystem["mac"] = macAddress;
+      rootSystem["rssi"] = getWifiStrength(10);
+      rootSystem["version"] = firmware_version;
+      rootSystem["trigger"] = T_REQUEST;
+      char full_charSystem[1200];
+      rootSystem.prettyPrintTo(full_charSystem, sizeof(full_charSystem));
+      pubMsg(full_charSystem);
+      jsonBufferSystem.clear();
+      memset(full_charSystem, 0, sizeof(full_charSystem));
       break;
-
+    }
     case INFO_STATE:
+    {
       dbf("state requested\n");
       pubMsg(Sherlocked.sendState(getState(), T_REQUEST));
       break;
-
+    }
     case INFO_FULLSTATE:
+    {
       dbf("full state requested\n");
       // {"sender":"controller","state":"idle","connected":true,"inputs":[{"id":1,"value":1}],"outputs":[{"id":1,"value":0},{"id":3,"value":1}],"method":"info","trigger":"request"}
-      DynamicJsonBuffer  jsonBuffer(400);
-      JsonObject& root = jsonBuffer.createObject();
-      root["sender"] = hostname;
-      root["state"] = getState();
-      root["connected"] = client.connected();
+      DynamicJsonBuffer  jsonBufferInfo(400);
+      JsonObject& rootInfo = jsonBufferInfo.createObject();
+      rootInfo["sender"] = hostname;
+      rootInfo["state"] = getState();
+      rootInfo["connected"] = client.connected();
       // geen inputs dus geen array terug
     //   JsonArray& inputs = root.createNestedArray("inputs");
     //   for (int i = 0; i < NUM_INPUTS; i++)
@@ -1041,18 +1050,21 @@ void commandCallback(int meth, int cmd, const char value[], int triggerID)
     //     ind_val["id"] = _input[i].id;
     //     ind_val["value"] = _input[i].value;
     //   }
-      JsonArray& outputs = root.createNestedArray("outputs");
+      JsonArray& outputs = rootInfo.createNestedArray("outputs");
       for (int i = 0; i < NUM_OUTPUTS; i++)
       {
         JsonObject& ond_val = outputs.createNestedObject();
         ond_val["id"] = outIDs[i];
         ond_val["value"] = outValues[i];
       }
-      root["trigger"] = "request";
-      char full_char[1200];
-      root.prettyPrintTo(full_char, sizeof(full_char));
-      pubMsg(full_char);
+      rootInfo["trigger"] = "request";
+      char full_charInfo[1200];
+      rootInfo.prettyPrintTo(full_charInfo, sizeof(full_charInfo));
+      pubMsg(full_charInfo);
+      jsonBufferInfo.clear();
+      memset(full_charInfo, 0, sizeof(full_charInfo));
       break;
+    }
   }
 }
 
